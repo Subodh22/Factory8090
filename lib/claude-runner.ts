@@ -39,10 +39,11 @@ export function runClaude(opts: RunOptions): () => void {
     args.push("--image", img);
   }
 
-  const proc = spawn("claude", args, {
+  const isWin = process.platform === "win32";
+  const proc = spawn(isWin ? "claude.cmd" : "claude", args, {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
-    shell: false,
+    shell: isWin,
   });
 
   let buffer = "";

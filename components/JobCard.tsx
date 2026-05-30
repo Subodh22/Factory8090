@@ -78,7 +78,7 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
           {elapsed !== null && <span>{elapsed}s</span>}
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1">
           {job.prUrl && (
             <a href={job.prUrl} target="_blank" rel="noopener noreferrer"
               className="p-1 text-zinc-500 hover:text-indigo-400"
@@ -87,13 +87,14 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
             </a>
           )}
           {job.status === "pending" && (
-            <button className="p-1 text-zinc-500 hover:text-green-400"
+            <button
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
               onClick={(e) => { e.stopPropagation(); handleRun(); }}>
-              <Play className="w-3 h-3" />
+              <Play className="w-2.5 h-2.5" /> Run
             </button>
           )}
           {(job.status === "pending" || job.status === "running" || job.status === "queued") && (
-            <button className="p-1 text-zinc-500 hover:text-red-400"
+            <button className="p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={(e) => { e.stopPropagation(); handleCancel(); }}>
               <X className="w-3 h-3" />
             </button>
