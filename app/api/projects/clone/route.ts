@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import os from "os";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -11,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   if (!repo) return NextResponse.json({ error: "repo required" }, { status: 400 });
 
-  const workspace = process.env.FACTORY_WORKSPACE ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? "~", "factory-workspace");
+  const workspace = process.env.FACTORY_WORKSPACE ?? path.join(os.homedir(), "factory-workspace");
   const repoName = repo.split("/")[1];
   const localPath = targetPath || path.join(workspace, repoName);
 
