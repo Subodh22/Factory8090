@@ -138,6 +138,9 @@ export default function Home() {
                   projectId={projectId}
                   onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }}
                 />
+                <p className="text-[10px] text-zinc-700 text-center mt-3">
+                  After submitting, click the job card on the board to watch live output →
+                </p>
               </div>
             )}
 
