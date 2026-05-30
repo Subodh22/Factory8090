@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
+import { AuthProvider } from "@/components/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -16,10 +17,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
       <body className="min-h-full flex flex-col antialiased">
-        <ConvexClientProvider>
-          {children}
-          <Toaster position="bottom-right" theme="dark" />
-        </ConvexClientProvider>
+        <AuthProvider>
+          <ConvexClientProvider>
+            {children}
+            <Toaster position="bottom-right" theme="dark" />
+          </ConvexClientProvider>
+        </AuthProvider>
       </body>
     </html>
   );

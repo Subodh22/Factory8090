@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { fetchUserRepos } from "@/lib/github";
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const token = searchParams.get("token") ?? process.env.GITHUB_TOKEN;
+  const session = await getServerSession(authOptions);
+  const token = session?.accessToken ?? new URL(req.url).searchParams.get("token") ?? process.env.GITHUB_TOKEN;
 
   if (!token) {
-    return NextResponse.json({ error: "token required" }, { status: 400 });
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   try {

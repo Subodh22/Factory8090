@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -9,9 +10,10 @@ import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory } from "lucide-react";
+import { Plus, Factory, LogOut } from "lucide-react";
 
 export default function Home() {
+  const { data: session } = useSession();
   const projects = useQuery(api.projects.list, {}) ?? [];
   const [activeProject, setActiveProject] = useState<Id<"projects"> | null>(null);
   const [selectedJob, setSelectedJob] = useState<Id<"jobs"> | null>(null);
@@ -59,9 +61,34 @@ export default function Home() {
           </button>
         </div>
 
-        <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
-          Claude Code · local
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
+            Claude Code · local
+          </span>
+          {session ? (
+            <div className="flex items-center gap-2">
+              {session.user?.image && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={session.user.image} alt={session.user.name ?? ""} className="w-6 h-6 rounded-full" />
+              )}
+              <span className="text-xs text-zinc-400">{session.user?.name}</span>
+              <button
+                onClick={() => signOut()}
+                className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => signIn("github")}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-md transition-colors"
+            >
+              Sign in with GitHub
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Body */}
