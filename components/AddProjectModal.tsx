@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Loader2, Lock, Search, ChevronDown, RefreshCw } from "lucide-react";
+import { X, Loader2, Lock, Search, ChevronDown, RefreshCw, FolderDown } from "lucide-react";
 import { toast } from "sonner";
 
 const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
@@ -30,6 +30,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
   const [ghRepos, setGhRepos] = useState<GHRepo[]>([]);
   const [filteredRepos, setFilteredRepos] = useState<GHRepo[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const [repoSearch, setRepoSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<GHRepo | null>(null);
@@ -88,11 +89,39 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name || !form.repo || !form.localPath) {
-      toast.error("Name, repo and local path are required");
+    if (!form.name || !form.repo) {
+      toast.error("Name and repo are required");
       return;
     }
-    await create({ ...form, githubToken: session?.accessToken ?? form.githubToken });
+
+    let localPath = form.localPath;
+
+    if (!localPath) {
+      setCloning(true);
+      try {
+        const res = await fetch("/api/projects/clone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repo: form.repo }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        localPath = data.localPath;
+        if (data.alreadyExists) {
+          toast.info(`Using existing clone at ${localPath}`);
+        } else {
+          toast.success(`Cloned to ${localPath}`);
+        }
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Clone failed");
+        setCloning(false);
+        return;
+      } finally {
+        setCloning(false);
+      }
+    }
+
+    await create({ ...form, localPath, githubToken: session?.accessToken ?? form.githubToken });
     toast.success("Project added");
     onClose();
   }
@@ -216,14 +245,31 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
 
           {/* Local path */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Local Path</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-zinc-500 uppercase tracking-widest">
+                Local Path <span className="text-zinc-700 normal-case">(optional)</span>
+              </label>
+              {!form.localPath && selectedRepo && (
+                <span className="text-[10px] text-indigo-500 flex items-center gap-1">
+                  <FolderDown className="w-3 h-3" /> will auto-clone on add
+                </span>
+              )}
+            </div>
             <Input
               value={form.localPath}
               onChange={(e) => setForm({ ...form, localPath: e.target.value })}
-              placeholder="C:\Users\you\projects\my-app"
+              placeholder={
+                selectedRepo
+                  ? `Leave empty to auto-clone`
+                  : "C:\\Users\\you\\projects\\my-app"
+              }
               className="bg-[#0a0a0b] border-[#27272a] text-zinc-100"
             />
-            <p className="text-[10px] text-zinc-600 mt-1">Where this repo is cloned on this machine</p>
+            <p className="text-[10px] text-zinc-600 mt-1">
+              {form.localPath
+                ? "Using this existing local path"
+                : "Empty = repo will be cloned automatically into your workspace"}
+            </p>
           </div>
 
           {/* Default branch */}
@@ -263,8 +309,15 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          <Button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white mt-1">
-            Add Project
+          <Button type="submit" disabled={cloning} className="bg-indigo-600 hover:bg-indigo-500 text-white mt-1">
+            {cloning ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Cloning repo…
+              </span>
+            ) : (
+              "Add Project"
+            )}
           </Button>
         </form>
       </div>
