@@ -40,7 +40,7 @@ export function runClaude(opts: RunOptions): () => void {
   }
 
   const isWin = process.platform === "win32";
-  const proc = spawn(isWin ? "claude.cmd" : "claude", args, {
+  const proc = spawn("claude", args, {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
     shell: isWin,
