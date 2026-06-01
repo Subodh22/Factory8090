@@ -49,7 +49,7 @@ export async function startJob(jobId: Id<"jobs">) {
 
     await withRetry(() => convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running" }));
 
-    // â”€â”€ Existing session: user replied to a waiting job â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // -- Existing session: user replied to a waiting job ---------------------
     const existingSession = activeSessions.get(jobId);
     if (existingSession) {
       // Get the latest user message to send
@@ -62,7 +62,7 @@ export async function startJob(jobId: Id<"jobs">) {
       if (!lastUserMsg) { processing.delete(jobId); return; }
 
       log(jobId, `User replied: "${lastUserMsg.text}"`);
-      log(jobId, "â”€".repeat(40));
+      log(jobId, "-".repeat(40));
 
       existingSession.onChunk((text) => {
         convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
@@ -77,7 +77,7 @@ export async function startJob(jobId: Id<"jobs">) {
       return;
     }
 
-    // â”€â”€ New session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // -- New session ----------------------------------------------------------
     log(jobId, `Job started â€” "${job.title}"`);
 
     // Worktree
@@ -102,7 +102,7 @@ export async function startJob(jobId: Id<"jobs">) {
     }
 
     log(jobId, "Launching Claude Code CLIâ€¦");
-    log(jobId, "â”€".repeat(40));
+    log(jobId, "-".repeat(40));
 
     // Create persistent session â€” process stays alive for the whole job
     const session = createClaudeSession(worktreePath);
@@ -159,7 +159,7 @@ interface TurnResultArgs {
 }
 
 async function handleTurnResult({ jobId, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
-  log(jobId, "â”€".repeat(40));
+  log(jobId, "-".repeat(40));
 
   const changedFiles = getChangedFiles(worktreePath);
   log(jobId, `Changed files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`);
@@ -235,4 +235,5 @@ export function cancelJob(jobId: Id<"jobs">) {
 export function getRunningJobs(): string[] {
   return Array.from(processing);
 }
+
 

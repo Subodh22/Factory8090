@@ -9,6 +9,8 @@ export interface TurnResult {
 }
 
 export interface ClaudeSession {
+  /** Send a message and wait for Claude to finish the turn. Spawns a new process
+   *  per call but passes --resume <sessionId> so conversation context is preserved. */
   sendMessage: (text: string) => Promise<TurnResult>;
   onChunk: (fn: (text: string) => void) => void;
   onSessionId: (fn: (id: string) => void) => void;
@@ -62,107 +64,138 @@ function formatToolUse(name: string, input: Record<string, unknown>): string {
 }
 
 /**
- * Creates a long-running Claude Code session.
- * Chunks emitted by onChunk are prefixed with \x00tool\x00 or \x00bash\x00 for tool calls,
- * so the UI can colour them differently. Plain text has no prefix.
+ * Creates a Claude Code session.
+ *
+ * Each sendMessage() call spawns a fresh `claude -p` process (non-interactive,
+ * so stdin piping works reliably). The session_id captured from the first turn
+ * is passed as --resume on every subsequent turn, giving Claude full conversation
+ * context without a persistent process.
+ *
+ * Chunks are prefixed with \x00tool\x00 / \x00bash\x00 / \x00stderr\x00
+ * so the UI can colour-code them.
  */
 export function createClaudeSession(cwd: string): ClaudeSession {
-  const proc = spawn(
-    "claude",
-    ["--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"],
-    {
-      cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: isWin,
-    }
-  );
-
-  let buffer = "";
+  let currentSessionId: string | null = null;
   let chunkHandler: ((text: string) => void) | null = null;
   let sessionIdHandler: ((id: string) => void) | null = null;
-  let turnResolve: ((result: TurnResult) => void) | null = null;
-  let turnReject: ((err: Error) => void) | null = null;
-  let assistantText = "";
-  let resultText = "";
-  let needsNewline = false; // track if last text chunk ended without \n
+  let currentProc: ReturnType<typeof spawn> | null = null;
+  let cancelled = false;
 
-  proc.stdout.on("data", (chunk: Buffer) => {
-    buffer += chunk.toString();
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+  function spawnTurn(text: string): Promise<TurnResult> {
+    return new Promise((resolve, reject) => {
+      if (cancelled) { reject(new Error("Session cancelled")); return; }
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const parsed = JSON.parse(line);
+      // Write prompt to a temp file to avoid Windows cmd.exe arg length limits
+      // and special-character quoting issues
+      const tmpPrompt = path.join(os.tmpdir(), `factory-prompt-${Date.now()}.txt`);
+      fs.writeFileSync(tmpPrompt, text, "utf8");
 
-        if (parsed.session_id && sessionIdHandler) {
-          sessionIdHandler(parsed.session_id);
-        }
-
-        if (parsed.type === "assistant" && parsed.message?.content) {
-          for (const block of parsed.message.content) {
-            if (block.type === "text" && block.text) {
-              assistantText += block.text;
-              chunkHandler?.(block.text);
-              needsNewline = !block.text.endsWith("\n");
-            } else if (block.type === "tool_use") {
-              // Ensure tool lines start on their own line
-              const prefix = needsNewline ? "\n" : "";
-              const toolLine = formatToolUse(block.name, block.input ?? {});
-              chunkHandler?.(prefix + toolLine);
-              needsNewline = false;
-            }
-          }
-        } else if (parsed.type === "result") {
-          resultText = parsed.result ?? "";
-          // Turn complete — resolve the promise
-          const resolve = turnResolve;
-          turnResolve = null;
-          turnReject = null;
-          needsNewline = false;
-          if (resolve) {
-            const r = { assistantText, resultText };
-            assistantText = "";
-            resultText = "";
-            Promise.resolve(resolve(r)).catch(() => {});
-          }
-        }
-      } catch {
-        // Non-JSON startup noise — pass through as plain text
-        if (chunkHandler) chunkHandler(line + "\n");
+      const args: string[] = [
+        "--output-format", "stream-json",
+        "--verbose",
+        "--dangerously-skip-permissions",
+        "--print",          // non-interactive: reads prompt from stdin
+      ];
+      if (currentSessionId) {
+        args.push("--resume", currentSessionId);
       }
-    }
-  });
 
-  proc.stderr.on("data", (chunk: Buffer) => {
-    // stderr often has progress info — prefix so UI can dim it
-    if (chunkHandler) chunkHandler("\x00stderr\x00" + chunk.toString());
-  });
+      const proc = spawn("claude", args, {
+        cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: isWin,
+      });
+      currentProc = proc;
 
-  proc.on("close", (code) => {
-    if (turnReject && code !== 0) {
-      turnReject(new Error(`Claude process exited with code ${code}`));
-      turnResolve = null;
-      turnReject = null;
-    }
-  });
+      // Feed the prompt via stdin then close — -p/--print reads from stdin when
+      // no prompt argument is supplied
+      proc.stdin!.write(text + "\n");
+      proc.stdin!.end();
+
+      // Clean up temp file (fire and forget)
+      fs.unlink(tmpPrompt, () => {});
+
+      let buffer = "";
+      let assistantText = "";
+      let resultText = "";
+      let resolved = false;
+      let needsNewline = false;
+
+      function finish(result: TurnResult) {
+        if (resolved) return;
+        resolved = true;
+        currentProc = null;
+        resolve(result);
+      }
+
+      proc.stdout!.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+
+            if (parsed.session_id) {
+              currentSessionId = parsed.session_id;
+              sessionIdHandler?.(parsed.session_id);
+            }
+
+            if (parsed.type === "assistant" && parsed.message?.content) {
+              for (const block of parsed.message.content) {
+                if (block.type === "text" && block.text) {
+                  assistantText += block.text;
+                  chunkHandler?.(block.text);
+                  needsNewline = !block.text.endsWith("\n");
+                } else if (block.type === "tool_use") {
+                  const prefix = needsNewline ? "\n" : "";
+                  chunkHandler?.(prefix + formatToolUse(block.name, block.input ?? {}));
+                  needsNewline = false;
+                }
+              }
+            } else if (parsed.type === "result") {
+              resultText = parsed.result ?? "";
+              finish({ assistantText, resultText });
+            }
+          } catch {
+            // Non-JSON startup noise — stream as plain text
+            if (chunkHandler) chunkHandler(line + "\n");
+          }
+        }
+      });
+
+      proc.stderr!.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        if (chunkHandler) chunkHandler("\x00stderr\x00" + text);
+      });
+
+      proc.on("close", (code) => {
+        currentProc = null;
+        if (!resolved) {
+          if (code === 0 || assistantText) {
+            finish({ assistantText, resultText });
+          } else {
+            reject(new Error(`Claude exited with code ${code}`));
+          }
+        }
+      });
+
+      proc.on("error", (err) => {
+        if (!resolved) reject(err);
+      });
+    });
+  }
 
   return {
-    sendMessage(text: string): Promise<TurnResult> {
-      assistantText = "";
-      resultText = "";
-      needsNewline = false;
-      return new Promise((resolve, reject) => {
-        turnResolve = resolve;
-        turnReject = reject;
-        proc.stdin!.write(text + "\n");
-      });
-    },
-
+    sendMessage: spawnTurn,
     onChunk(fn) { chunkHandler = fn; },
     onSessionId(fn) { sessionIdHandler = fn; },
-    cancel() { proc.kill("SIGTERM"); },
+    cancel() {
+      cancelled = true;
+      currentProc?.kill("SIGTERM");
+    },
   };
 }
 
