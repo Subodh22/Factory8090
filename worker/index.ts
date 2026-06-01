@@ -45,8 +45,8 @@ async function tick() {
         .catch((err) => console.error(`✗  Failed:  "${job.title}" — ${err}`))
         .finally(() => processing.delete(job._id));
     }
-  } catch {
-    // transient network error — will retry
+  } catch (err) {
+    console.error(`[worker] tick error: ${err}`);
   }
 }
 

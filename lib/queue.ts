@@ -5,16 +5,25 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+// Lazy-init so the URL is read at call time, not module load time.
+// This matters for the local worker which loads .env.local after imports run.
+let _convex: ConvexHttpClient | null = null;
+function getConvex(): ConvexHttpClient {
+  if (!_convex) _convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  return _convex;
+}
+
 const running = new Map<string, AbortController>();
 
 function log(jobId: Id<"jobs">, msg: string) {
   const line = `[factory] ${msg}\n`;
-  convex.mutation(api.jobs.appendOutput, { jobId, text: line }).catch(() => {});
+  getConvex().mutation(api.jobs.appendOutput, { jobId, text: line }).catch(() => {});
 }
 
 export async function startJob(jobId: Id<"jobs">) {
   if (running.has(jobId)) return;
+
+  const convex = getConvex();
 
   const job = await convex.query(api.jobs.get, { id: jobId });
   if (!job) return;
