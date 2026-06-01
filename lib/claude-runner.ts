@@ -23,15 +23,20 @@ const isWin = process.platform === "win32";
 
 /**
  * Creates a long-running Claude Code session.
- * The process stays alive between turns — call sendMessage() for each user turn.
- * Claude processes stdin line-by-line; each message triggers a full response turn.
+ * Process stays alive between turns — call sendMessage() for each user turn.
+ * --dangerously-skip-permissions lets Claude run tools without TTY approval.
+ * No preamble is sent here; callers prepend context to the first sendMessage() call.
  */
-export function createClaudeSession(cwd: string, agentRules?: string): ClaudeSession {
-  const proc = spawn("claude", ["--output-format", "stream-json", "--verbose"], {
-    cwd,
-    stdio: ["pipe", "pipe", "pipe"],
-    shell: isWin,
-  });
+export function createClaudeSession(cwd: string): ClaudeSession {
+  const proc = spawn(
+    "claude",
+    ["--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"],
+    {
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: isWin,
+    }
+  );
 
   let buffer = "";
   let chunkHandler: ((text: string) => void) | null = null;
@@ -67,25 +72,26 @@ export function createClaudeSession(cwd: string, agentRules?: string): ClaudeSes
             resultText = parsed.result;
             chunkHandler?.(parsed.result);
           }
-          // Turn is complete — resolve the promise
+          // Turn complete — resolve the promise
           const resolve = turnResolve;
           turnResolve = null;
           turnReject = null;
           if (resolve) {
-            const result = { assistantText, resultText };
+            const r = { assistantText, resultText };
             assistantText = "";
             resultText = "";
-            Promise.resolve(resolve(result)).catch(() => {});
+            Promise.resolve(resolve(r)).catch(() => {});
           }
         }
       } catch {
-        chunkHandler?.(line + "\n");
+        // Non-JSON line (startup noise) — stream as-is
+        if (chunkHandler) chunkHandler(line + "\n");
       }
     }
   });
 
   proc.stderr.on("data", (chunk: Buffer) => {
-    chunkHandler?.(chunk.toString());
+    if (chunkHandler) chunkHandler(chunk.toString());
   });
 
   proc.on("close", (code) => {
@@ -95,14 +101,6 @@ export function createClaudeSession(cwd: string, agentRules?: string): ClaudeSes
       turnReject = null;
     }
   });
-
-  // Prime Claude with agent rules if provided (sent as first message before any user prompt)
-  const contextPreamble = agentRules
-    ? `Project context:\n${agentRules}\n\nYou are a coding assistant. When given a task, look at the codebase and implement the changes directly.\n`
-    : `You are a coding assistant. When given a task, look at the codebase and implement the changes directly.\n`;
-
-  // Write the preamble silently — Claude will acknowledge but we ignore this turn's output
-  proc.stdin!.write(contextPreamble + "\n");
 
   return {
     sendMessage(text: string): Promise<TurnResult> {

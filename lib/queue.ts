@@ -1,4 +1,4 @@
-import { createClaudeSession } from "./claude-runner";
+﻿import { createClaudeSession } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "./worktree";
 import { createPR } from "./github";
 import { ConvexHttpClient } from "convex/browser";
@@ -12,7 +12,7 @@ function getConvex(): ConvexHttpClient {
   return _convex;
 }
 
-// Active Claude sessions — keyed by jobId. Session process stays alive between user turns.
+// Active Claude sessions â€” keyed by jobId. Session process stays alive between user turns.
 const activeSessions = new Map<string, ReturnType<typeof createClaudeSession>>();
 const processing = new Set<string>();
 
@@ -49,7 +49,7 @@ export async function startJob(jobId: Id<"jobs">) {
 
     await withRetry(() => convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running" }));
 
-    // ── Existing session: user replied to a waiting job ─────────────────────
+    // â”€â”€ Existing session: user replied to a waiting job â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const existingSession = activeSessions.get(jobId);
     if (existingSession) {
       // Get the latest user message to send
@@ -62,7 +62,7 @@ export async function startJob(jobId: Id<"jobs">) {
       if (!lastUserMsg) { processing.delete(jobId); return; }
 
       log(jobId, `User replied: "${lastUserMsg.text}"`);
-      log(jobId, "─".repeat(40));
+      log(jobId, "â”€".repeat(40));
 
       existingSession.onChunk((text) => {
         convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
@@ -77,8 +77,8 @@ export async function startJob(jobId: Id<"jobs">) {
       return;
     }
 
-    // ── New session ──────────────────────────────────────────────────────────
-    log(jobId, `Job started — "${job.title}"`);
+    // â”€â”€ New session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    log(jobId, `Job started â€” "${job.title}"`);
 
     // Worktree
     const existingWorktree = job.worktreePath && fs.existsSync(job.worktreePath);
@@ -90,7 +90,7 @@ export async function startJob(jobId: Id<"jobs">) {
       log(jobId, `Reusing worktree: ${worktreePath}`);
     } else {
       log(jobId, `Repo: ${project.localPath}`);
-      log(jobId, "Creating git worktree…");
+      log(jobId, "Creating git worktreeâ€¦");
       const wt = createWorktree(project.localPath, jobId, project.defaultBranch);
       worktreePath = wt.worktreePath;
       branch = wt.branch;
@@ -101,11 +101,11 @@ export async function startJob(jobId: Id<"jobs">) {
       );
     }
 
-    log(jobId, "Launching Claude Code CLI…");
-    log(jobId, "─".repeat(40));
+    log(jobId, "Launching Claude Code CLIâ€¦");
+    log(jobId, "â”€".repeat(40));
 
-    // Create persistent session — process stays alive for the whole job
-    const session = createClaudeSession(worktreePath, project.agentRules);
+    // Create persistent session â€” process stays alive for the whole job
+    const session = createClaudeSession(worktreePath);
     activeSessions.set(jobId, session);
 
     session.onSessionId((id) => {
@@ -116,7 +116,12 @@ export async function startJob(jobId: Id<"jobs">) {
       convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
     });
 
-    const turn = await session.sendMessage(job.prompt);
+    // Prepend agent rules to the first message so Claude has full project context
+    const systemContext = project.agentRules
+      ? `Project context:\n${project.agentRules}\n\nYou are a coding assistant. Implement tasks directly by reading and modifying files in the repo.\n\n---\n\n`
+      : `You are a coding assistant. Implement tasks directly by reading and modifying files in the repo.\n\n---\n\n`;
+
+    const turn = await session.sendMessage(systemContext + job.prompt);
     await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
     processing.delete(jobId);
 
@@ -154,7 +159,7 @@ interface TurnResultArgs {
 }
 
 async function handleTurnResult({ jobId, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
-  log(jobId, "─".repeat(40));
+  log(jobId, "â”€".repeat(40));
 
   const changedFiles = getChangedFiles(worktreePath);
   log(jobId, `Changed files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`);
@@ -162,18 +167,18 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
   const claudeResponse = turn.assistantText.trim() || turn.resultText.trim();
 
   if (changedFiles.length === 0) {
-    // Claude is asking a question or needs more info — save message, wait for reply
-    log(jobId, "⏳ Waiting for your reply…");
+    // Claude is asking a question or needs more info â€” save message, wait for reply
+    log(jobId, "â³ Waiting for your replyâ€¦");
     if (claudeResponse) {
       await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: claudeResponse });
     }
     await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "waiting_for_input" });
     log(jobId, "Reply in the chat panel to continue.");
-    // Session stays alive in activeSessions — process is NOT killed
+    // Session stays alive in activeSessions â€” process is NOT killed
     return;
   }
 
-  // Claude made changes — commit, PR, complete
+  // Claude made changes â€” commit, PR, complete
   cleanupSession(jobId);
   try {
     commitAndPush(worktreePath, `feat: ${branch}\n\nAutomated by Factory`);
@@ -184,7 +189,7 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
     let prNumber: number | undefined;
 
     if (project.githubToken) {
-      log(jobId, "Creating pull request…");
+      log(jobId, "Creating pull requestâ€¦");
       try {
         const job = await convex.query(api.jobs.get, { id: jobId });
         const pr = await createPR(project.githubToken, owner, repo, {
@@ -211,7 +216,7 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
         touchedPaths: changedFiles,
       })
     );
-    log(jobId, "✓ Job completed successfully.");
+    log(jobId, "âœ“ Job completed successfully.");
   } catch (err) {
     const msg = String(err);
     log(jobId, `ERROR during commit/push/PR: ${msg}`);
@@ -230,3 +235,4 @@ export function cancelJob(jobId: Id<"jobs">) {
 export function getRunningJobs(): string[] {
   return Array.from(processing);
 }
+
