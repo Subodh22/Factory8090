@@ -10,6 +10,30 @@ interface Props {
   jobId: Id<"jobs">;
 }
 
+type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "divider" | "text";
+
+function parseLine(raw: string): { type: LineType; text: string } {
+  if (raw.startsWith("\x00tool\x00")) return { type: "tool", text: raw.slice(7) };
+  if (raw.startsWith("\x00bash\x00")) return { type: "bash", text: raw.slice(7) };
+  if (raw.startsWith("\x00stderr\x00")) return { type: "stderr", text: raw.slice(9) };
+  if (raw.startsWith("[factory]")) return { type: "factory", text: raw };
+  if (/^─+$/.test(raw.trim())) return { type: "divider", text: raw };
+  if (/ERROR|FATAL/.test(raw)) return { type: "error", text: raw };
+  return { type: "text", text: raw };
+}
+
+function lineClass(type: LineType): string {
+  switch (type) {
+    case "tool":    return "text-cyan-400";
+    case "bash":    return "text-amber-300";
+    case "stderr":  return "text-zinc-600";
+    case "factory": return "text-indigo-400";
+    case "error":   return "text-red-400";
+    case "divider": return "text-zinc-800";
+    case "text":    return "text-zinc-300";
+  }
+}
+
 export function JobDetail({ jobId }: Props) {
   const job = useQuery(api.jobs.get, { id: jobId });
   const chunks = useQuery(api.jobs.getOutput, { jobId });
@@ -23,6 +47,15 @@ export function JobDetail({ jobId }: Props) {
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
   const canChat = job?.status !== "pending";
+
+  // Derive the last active tool for the live status pill
+  const lines = output.split("\n").filter(Boolean);
+  const lastToolLine = [...lines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
+  const activeTool = isRunning && lastToolLine
+    ? lastToolLine.startsWith("\x00bash\x00")
+      ? lastToolLine.slice(7)
+      : lastToolLine.slice(7)
+    : null;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -90,34 +123,33 @@ export function JobDetail({ jobId }: Props) {
           <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase flex-1 text-center">
             Agent Output
           </span>
-          {isRunning && (
+          {isRunning && activeTool ? (
+            <span className="flex items-center gap-1.5 text-[10px] text-cyan-400 max-w-[160px] truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse flex-shrink-0" />
+              {activeTool}
+            </span>
+          ) : isRunning ? (
             <span className="flex items-center gap-1 text-[10px] text-indigo-400">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
               live
             </span>
-          )}
+          ) : null}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-[#080809] p-4 min-h-0">
           {output ? (
             <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
-              {output.split("\n").map((line, i) => {
-                const isFactory = line.startsWith("[factory]");
-                const isError = line.includes("ERROR") || line.includes("error");
-                const isDivider = /^─+$/.test(line.trim());
+              {output.split("\n").map((raw, i) => {
+                if (!raw) return <span key={i}>{"\n"}</span>;
+                const { type, text } = parseLine(raw);
                 return (
-                  <span key={i} className={
-                    isDivider ? "text-zinc-800" :
-                    isError ? "text-red-400" :
-                    isFactory ? "text-indigo-400" :
-                    "text-zinc-300"
-                  }>
-                    {line}{"\n"}
+                  <span key={i} className={lineClass(type)}>
+                    {text}{"\n"}
                   </span>
                 );
               })}
               {isRunning && (
-                <span className="inline-block w-2 h-3.5 bg-indigo-400 animate-pulse ml-0.5 align-middle" />
+                <span className="inline-block w-2 h-3.5 bg-cyan-400 animate-pulse ml-0.5 align-middle opacity-60" />
               )}
             </pre>
           ) : (
@@ -129,7 +161,7 @@ export function JobDetail({ jobId }: Props) {
         </div>
       </div>
 
-      {/* Chat thread — shown when there are messages */}
+      {/* Chat thread */}
       {messages && messages.length > 0 && (
         <div className="border-t border-[#27272a] flex-shrink-0 max-h-64 overflow-y-auto bg-[#0a0a0c]">
           <div className="px-4 py-2 border-b border-[#27272a]">
@@ -158,7 +190,7 @@ export function JobDetail({ jobId }: Props) {
         </div>
       )}
 
-      {/* Chat input — always available after job has started */}
+      {/* Chat input */}
       {canChat && (
         <div className={`border-t p-3 flex-shrink-0 ${
           isWaiting

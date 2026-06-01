@@ -9,23 +9,62 @@ export interface TurnResult {
 }
 
 export interface ClaudeSession {
-  /** Send a message and wait for Claude to finish the turn */
   sendMessage: (text: string) => Promise<TurnResult>;
-  /** Stream chunks to a callback during an active turn */
   onChunk: (fn: (text: string) => void) => void;
-  /** Called when Claude emits a session_id */
   onSessionId: (fn: (id: string) => void) => void;
-  /** Kill the process */
   cancel: () => void;
 }
 
 const isWin = process.platform === "win32";
 
+function formatToolUse(name: string, input: Record<string, unknown>): string {
+  const n = name.toLowerCase();
+  if (n === "read") {
+    return `\x00tool\x00Read    ${input.file_path ?? input.path ?? ""}\n`;
+  }
+  if (n === "write") {
+    const lines = String(input.content ?? "").split("\n").length;
+    return `\x00tool\x00Write   ${input.file_path ?? input.path ?? ""} (${lines} lines)\n`;
+  }
+  if (n === "edit") {
+    return `\x00tool\x00Edit    ${input.file_path ?? input.path ?? ""}\n`;
+  }
+  if (n === "multiedit") {
+    const count = Array.isArray(input.edits) ? input.edits.length : "?";
+    return `\x00tool\x00Edit    ${count} file(s)\n`;
+  }
+  if (n === "bash") {
+    const cmd = String(input.command ?? "").replace(/\n/g, " ").slice(0, 100);
+    return `\x00bash\x00$ ${cmd}\n`;
+  }
+  if (n === "glob") {
+    const loc = input.path ? ` in ${input.path}` : "";
+    return `\x00tool\x00Glob    ${input.pattern ?? ""}${loc}\n`;
+  }
+  if (n === "grep") {
+    const loc = input.path ? ` in ${input.path}` : "";
+    return `\x00tool\x00Grep    "${input.pattern ?? ""}"${loc}\n`;
+  }
+  if (n === "todowrite") {
+    return `\x00tool\x00Todo    updated\n`;
+  }
+  if (n === "websearch") {
+    return `\x00tool\x00Search  ${input.query ?? ""}\n`;
+  }
+  if (n === "webfetch") {
+    return `\x00tool\x00Fetch   ${input.url ?? ""}\n`;
+  }
+  if (n === "agent") {
+    return `\x00tool\x00Agent   spawning subagent\n`;
+  }
+  const firstVal = Object.values(input)[0];
+  return `\x00tool\x00${name.padEnd(8)}${String(firstVal ?? "").slice(0, 80)}\n`;
+}
+
 /**
  * Creates a long-running Claude Code session.
- * Process stays alive between turns — call sendMessage() for each user turn.
- * --dangerously-skip-permissions lets Claude run tools without TTY approval.
- * No preamble is sent here; callers prepend context to the first sendMessage() call.
+ * Chunks emitted by onChunk are prefixed with \x00tool\x00 or \x00bash\x00 for tool calls,
+ * so the UI can colour them differently. Plain text has no prefix.
  */
 export function createClaudeSession(cwd: string): ClaudeSession {
   const proc = spawn(
@@ -45,6 +84,7 @@ export function createClaudeSession(cwd: string): ClaudeSession {
   let turnReject: ((err: Error) => void) | null = null;
   let assistantText = "";
   let resultText = "";
+  let needsNewline = false; // track if last text chunk ended without \n
 
   proc.stdout.on("data", (chunk: Buffer) => {
     buffer += chunk.toString();
@@ -62,20 +102,25 @@ export function createClaudeSession(cwd: string): ClaudeSession {
 
         if (parsed.type === "assistant" && parsed.message?.content) {
           for (const block of parsed.message.content) {
-            if (block.type === "text") {
+            if (block.type === "text" && block.text) {
               assistantText += block.text;
               chunkHandler?.(block.text);
+              needsNewline = !block.text.endsWith("\n");
+            } else if (block.type === "tool_use") {
+              // Ensure tool lines start on their own line
+              const prefix = needsNewline ? "\n" : "";
+              const toolLine = formatToolUse(block.name, block.input ?? {});
+              chunkHandler?.(prefix + toolLine);
+              needsNewline = false;
             }
           }
         } else if (parsed.type === "result") {
-          if (parsed.result) {
-            resultText = parsed.result;
-            chunkHandler?.(parsed.result);
-          }
+          resultText = parsed.result ?? "";
           // Turn complete — resolve the promise
           const resolve = turnResolve;
           turnResolve = null;
           turnReject = null;
+          needsNewline = false;
           if (resolve) {
             const r = { assistantText, resultText };
             assistantText = "";
@@ -84,14 +129,15 @@ export function createClaudeSession(cwd: string): ClaudeSession {
           }
         }
       } catch {
-        // Non-JSON line (startup noise) — stream as-is
+        // Non-JSON startup noise — pass through as plain text
         if (chunkHandler) chunkHandler(line + "\n");
       }
     }
   });
 
   proc.stderr.on("data", (chunk: Buffer) => {
-    if (chunkHandler) chunkHandler(chunk.toString());
+    // stderr often has progress info — prefix so UI can dim it
+    if (chunkHandler) chunkHandler("\x00stderr\x00" + chunk.toString());
   });
 
   proc.on("close", (code) => {
@@ -106,6 +152,7 @@ export function createClaudeSession(cwd: string): ClaudeSession {
     sendMessage(text: string): Promise<TurnResult> {
       assistantText = "";
       resultText = "";
+      needsNewline = false;
       return new Promise((resolve, reject) => {
         turnResolve = resolve;
         turnReject = reject;
