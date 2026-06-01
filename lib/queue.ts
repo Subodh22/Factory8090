@@ -82,10 +82,17 @@ export async function startJob(jobId: Id<"jobs">) {
       // Non-fatal — continue with empty history
     }
 
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
-    const effectivePrompt = isResume && lastUserMessage ? lastUserMessage.text : job.prompt;
-
-    if (isResume) log(jobId, `Continuing conversation…`);
+    // Build prompt — for resumes, include full conversation history so Claude has context
+    let effectivePrompt: string;
+    if (isResume && messages.length > 0) {
+      const history = messages
+        .map((m) => `${m.role === "assistant" ? "Claude" : "User"}: ${m.text}`)
+        .join("\n\n");
+      effectivePrompt = `Original task: ${job.prompt}\n\nConversation so far:\n${history}\n\nPlease continue with the task based on the conversation above. Make the requested changes now.`;
+      log(jobId, `Continuing conversation (${messages.length} messages)…`);
+    } else {
+      effectivePrompt = job.prompt;
+    }
 
     log(jobId, "Launching Claude Code CLI…");
     log(jobId, "─".repeat(40));
@@ -105,7 +112,7 @@ export async function startJob(jobId: Id<"jobs">) {
       cwd: worktreePath,
       images: isResume ? [] : job.images,
       agentRules: isResume ? undefined : project.agentRules,
-      resumeSessionId: isResume ? sessionId! : undefined,
+      resumeSessionId: undefined, // don't use --resume, pass history in prompt instead
       signal: ac.signal,
       onChunk,
       onAssistantText: (text) => { assistantText += text; },
