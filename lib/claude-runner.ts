@@ -10,7 +10,8 @@ export interface RunOptions {
   agentRules?: string;
   resumeSessionId?: string;        // if set, runs --resume <id> instead of fresh -p
   onChunk: (text: string) => void;
-  onAssistantText?: (text: string) => void; // only assistant message text, not result summary
+  onAssistantText?: (text: string) => void; // only assistant message content blocks
+  onResult?: (text: string) => void;        // the final result event text
   onSessionId?: (id: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
@@ -18,7 +19,7 @@ export interface RunOptions {
 }
 
 export function runClaude(opts: RunOptions): () => void {
-  const { prompt, cwd, images = [], agentRules, resumeSessionId, onChunk, onAssistantText, onSessionId, onDone, onError, signal } = opts;
+  const { prompt, cwd, images = [], agentRules, resumeSessionId, onChunk, onAssistantText, onResult, onSessionId, onDone, onError, signal } = opts;
 
   const systemAppend = agentRules ? `\n\nProject rules:\n${agentRules}` : "";
   const fullPrompt = prompt + systemAppend;
@@ -73,9 +74,13 @@ export function runClaude(opts: RunOptions): () => void {
               onAssistantText?.(block.text);
             }
           }
-        } else if (parsed.type === "result" && parsed.result) {
-          // result is a metadata summary — send to output display but NOT to assistant text tracker
-          onChunk(parsed.result);
+        } else if (parsed.type === "result") {
+          // result event fires at end — contains the final text response
+          // send to display, and also fire onResult so caller can use it for detection
+          if (parsed.result) {
+            onChunk(parsed.result);
+            onResult?.(parsed.result);
+          }
         }
       } catch {
         onChunk(line + "\n");

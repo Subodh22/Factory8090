@@ -91,7 +91,8 @@ export async function startJob(jobId: Id<"jobs">) {
 
     let sessionId = job.sessionId;
     let claudeOutput = "";
-    let assistantText = ""; // only assistant message blocks, not result summary
+    let assistantText = ""; // text from assistant message content blocks
+    let resultText = "";    // text from the final result event
 
     const onChunk = (text: string) => {
       claudeOutput += text;
@@ -107,6 +108,7 @@ export async function startJob(jobId: Id<"jobs">) {
       signal: ac.signal,
       onChunk,
       onAssistantText: (text) => { assistantText += text; },
+      onResult: (text) => { resultText = text; },
       onSessionId: (id) => {
         sessionId = id;
         convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", sessionId: id }).catch(() => {});
@@ -119,11 +121,14 @@ export async function startJob(jobId: Id<"jobs">) {
         log(jobId, `Changed files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`);
 
         // Claude asked a question — pause and keep worktree for session resume
-        // Use assistantText (not claudeOutput) so the result summary event doesn't mask the trailing "?"
-        const trimmedAssistant = assistantText.trim();
-        if (trimmedAssistant.endsWith("?") && changedFiles.length === 0) {
+        // assistantText = streaming assistant blocks; resultText = final result event
+        // Claude Code CLI sometimes puts the response only in the result event, not streaming
+        const questionCandidate = assistantText.trim() || resultText.trim();
+        console.log(`[queue] assistantText=${JSON.stringify(assistantText.slice(-80))} resultText=${JSON.stringify(resultText.slice(-80))}`);
+        console.log(`[queue] questionCandidate ends with ?: ${questionCandidate.endsWith("?")} changedFiles=${changedFiles.length}`);
+        if (questionCandidate.endsWith("?") && changedFiles.length === 0) {
           log(jobId, "⏳ Claude has a question — waiting for your reply…");
-          await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: trimmedAssistant });
+          await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: questionCandidate });
           await convex.mutation(api.jobs.updateStatus, {
             id: jobId,
             status: "waiting_for_input",
