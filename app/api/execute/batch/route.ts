@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { startJob } from "@/lib/queue";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -14,9 +12,7 @@ export async function POST(req: NextRequest) {
   const pending = jobs.filter((j) => j.status === "pending");
 
   for (const job of pending) {
-    startJob(job._id as Id<"jobs">).catch((err) => {
-      console.error(`[batch] job ${job._id} failed:`, err);
-    });
+    await convex.mutation(api.jobs.updateStatus, { id: job._id, status: "queued" });
   }
 
   return NextResponse.json({ started: pending.length });

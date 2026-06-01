@@ -21,18 +21,15 @@ interface Job {
 
 export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs">) => void }) {
   const cancel = useMutation(api.jobs.cancel);
+  const markQueued = useMutation(api.jobs.updateStatus);
 
   const elapsed = job.startedAt
     ? Math.round(((job.completedAt ?? Date.now()) - job.startedAt) / 1000)
     : null;
 
   async function handleRun() {
-    await fetch("/api/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job._id }),
-    });
-    toast.success("Job started");
+    await markQueued({ id: job._id, status: "queued" });
+    toast.success("Queued — local worker will pick it up");
   }
 
   async function handleCancel() {
