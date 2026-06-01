@@ -82,14 +82,25 @@ export async function startJob(jobId: Id<"jobs">) {
       // Non-fatal — continue with empty history
     }
 
-    // Build prompt — for resumes, include full conversation history so Claude has context
+    // Build prompt — for resumes, inject conversation history so Claude has full context
     let effectivePrompt: string;
     if (isResume && messages.length > 0) {
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
       const history = messages
         .map((m) => `${m.role === "assistant" ? "Claude" : "User"}: ${m.text}`)
         .join("\n\n");
-      effectivePrompt = `Original task: ${job.prompt}\n\nConversation so far:\n${history}\n\nPlease continue with the task based on the conversation above. Make the requested changes now.`;
-      log(jobId, `Continuing conversation (${messages.length} messages)…`);
+      effectivePrompt = [
+        `TASK: ${job.prompt}`,
+        ``,
+        `The user has been asked a clarifying question. Here is the full conversation:`,
+        ``,
+        history,
+        ``,
+        `The user's answer is: "${lastUserMsg?.text ?? ""}"`,
+        ``,
+        `Now look at the codebase, understand the task, and implement the changes. Do NOT ask more questions — just do it.`,
+      ].join("\n");
+      log(jobId, `Continuing with user reply: "${lastUserMsg?.text ?? ""}"`);
     } else {
       effectivePrompt = job.prompt;
     }
@@ -110,9 +121,10 @@ export async function startJob(jobId: Id<"jobs">) {
     runClaude({
       prompt: effectivePrompt,
       cwd: worktreePath,
-      images: isResume ? [] : job.images,
-      agentRules: isResume ? undefined : project.agentRules,
-      resumeSessionId: undefined, // don't use --resume, pass history in prompt instead
+      images: job.images,               // always include images
+      agentRules: project.agentRules,   // always include agent rules for project context
+      resumeSessionId: undefined,
+
       signal: ac.signal,
       onChunk,
       onAssistantText: (text) => { assistantText += text; },
