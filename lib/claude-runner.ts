@@ -10,6 +10,7 @@ export interface RunOptions {
   agentRules?: string;
   resumeSessionId?: string;        // if set, runs --resume <id> instead of fresh -p
   onChunk: (text: string) => void;
+  onAssistantText?: (text: string) => void; // only assistant message text, not result summary
   onSessionId?: (id: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
@@ -17,7 +18,7 @@ export interface RunOptions {
 }
 
 export function runClaude(opts: RunOptions): () => void {
-  const { prompt, cwd, images = [], agentRules, resumeSessionId, onChunk, onSessionId, onDone, onError, signal } = opts;
+  const { prompt, cwd, images = [], agentRules, resumeSessionId, onChunk, onAssistantText, onSessionId, onDone, onError, signal } = opts;
 
   const systemAppend = agentRules ? `\n\nProject rules:\n${agentRules}` : "";
   const fullPrompt = prompt + systemAppend;
@@ -67,9 +68,13 @@ export function runClaude(opts: RunOptions): () => void {
 
         if (parsed.type === "assistant" && parsed.message?.content) {
           for (const block of parsed.message.content) {
-            if (block.type === "text") onChunk(block.text);
+            if (block.type === "text") {
+              onChunk(block.text);
+              onAssistantText?.(block.text);
+            }
           }
         } else if (parsed.type === "result" && parsed.result) {
+          // result is a metadata summary — send to output display but NOT to assistant text tracker
           onChunk(parsed.result);
         }
       } catch {
