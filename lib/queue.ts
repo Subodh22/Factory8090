@@ -55,11 +55,12 @@ export async function startJob(jobId: Id<"jobs">) {
 
     const existingWorktree = job.worktreePath && fs.existsSync(job.worktreePath);
 
-    if (job.sessionId && existingWorktree) {
+    // Reuse the worktree if it's still on disk — regardless of whether sessionId is set
+    if (existingWorktree) {
       worktreePath = job.worktreePath!;
       branch = job.branch!;
-      isResume = true;
-      log(jobId, `Resuming session in ${worktreePath}`);
+      isResume = !!job.sessionId; // only pass --resume if we actually have a session id
+      log(jobId, isResume ? `Resuming Claude session in ${worktreePath}` : `Reusing worktree in ${worktreePath}`);
     } else {
       log(jobId, `Repo: ${project.localPath}`);
       log(jobId, "Creating git worktree…");

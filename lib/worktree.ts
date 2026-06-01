@@ -13,10 +13,16 @@ export function createWorktree(repoPath: string, jobId: string, baseBranch: stri
 
   fs.mkdirSync(path.join(repoPath, ".worktrees"), { recursive: true });
 
-  const result = git(["worktree", "add", "-b", branch, worktreePath, baseBranch], repoPath);
+  let result = git(["worktree", "add", "-b", branch, worktreePath, baseBranch], repoPath);
 
   if (result.status !== 0) {
-    throw new Error(`git worktree add failed: ${result.stderr || result.stdout}`);
+    // Branch already exists — attach the worktree to the existing branch
+    if (result.stderr.includes("already exists")) {
+      result = git(["worktree", "add", worktreePath, branch], repoPath);
+    }
+    if (result.status !== 0) {
+      throw new Error(`git worktree add failed: ${result.stderr || result.stdout}`);
+    }
   }
 
   return { worktreePath, branch };
