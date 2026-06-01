@@ -8,9 +8,11 @@ import { KanbanBoard } from "@/components/KanbanBoard";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
+import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory, LogOut } from "lucide-react";
+import { Plus, Factory, LogOut, Zap } from "lucide-react";
+import { toast } from "sonner";
 
 export default function Home() {
   const { data: session } = useSession();
@@ -19,9 +21,35 @@ export default function Home() {
   const [selectedJob, setSelectedJob] = useState<Id<"jobs"> | null>(null);
   const [showAddProject, setShowAddProject] = useState(false);
   const [tab, setTab] = useState("board");
+  const [runningAll, setRunningAll] = useState(false);
 
   const project = projects.find((p) => p._id === activeProject) ?? projects[0] ?? null;
   const projectId = project?._id ?? null;
+
+  const allJobs = useQuery(api.jobs.list, projectId ? { projectId } : "skip") ?? [];
+  const runningCount = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
+  const pendingCount = allJobs.filter((j) => j.status === "pending").length;
+
+  async function handleRunAll() {
+    if (!projectId) return;
+    setRunningAll(true);
+    try {
+      const res = await fetch("/api/execute/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+      if (data.started > 0) {
+        toast.success(`Started ${data.started} agent${data.started !== 1 ? "s" : ""} in parallel`);
+        setTab("agents");
+      } else {
+        toast.info("No pending jobs to run");
+      }
+    } finally {
+      setRunningAll(false);
+    }
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0b] text-zinc-100 overflow-hidden">
@@ -62,9 +90,33 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Run All button */}
+          {projectId && pendingCount > 0 && (
+            <button
+              onClick={handleRunAll}
+              disabled={runningAll}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md transition-colors font-medium"
+            >
+              <Zap className="w-3 h-3" />
+              {runningAll ? "Starting…" : `Run All (${pendingCount})`}
+            </button>
+          )}
+
+          {/* Running agents badge */}
+          {runningCount > 0 && (
+            <button
+              onClick={() => setTab("agents")}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] bg-zinc-900 text-indigo-400 rounded-full border border-indigo-900 hover:border-indigo-700 transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+              {runningCount} running
+            </button>
+          )}
+
           <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
             Claude Code · local
           </span>
+
           {session ? (
             <div className="flex items-center gap-2">
               {session.user?.image && (
@@ -103,13 +155,21 @@ export default function Home() {
           <div className="px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-4">
-                {["board", "chat"].map((t) => (
+                {["board", "agents", "chat"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
                     className="text-xs pb-2.5 px-0 rounded-none border-b-2 data-[state=active]:border-indigo-500 data-[state=active]:text-zinc-100 data-[state=inactive]:border-transparent data-[state=inactive]:text-zinc-500 bg-transparent capitalize"
                   >
-                    {t === "board" ? "Kanban Board" : "New Job"}
+                    {t === "board" ? "Kanban Board" :
+                     t === "agents" ? (
+                       <span className="flex items-center gap-1.5">
+                         Agents
+                         {runningCount > 0 && (
+                           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                         )}
+                       </span>
+                     ) : "New Job"}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -132,6 +192,16 @@ export default function Home() {
               </div>
             ) : null}
 
+            {tab === "agents" && projectId && (
+              <AgentsGrid projectId={projectId} />
+            )}
+
+            {tab === "agents" && !projectId && (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <p className="text-sm text-zinc-600">Add a project first</p>
+              </div>
+            )}
+
             {tab === "chat" && projectId && (
               <div className="max-w-2xl mx-auto pt-4">
                 <ChatPanel
@@ -139,7 +209,7 @@ export default function Home() {
                   onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }}
                 />
                 <p className="text-[10px] text-zinc-700 text-center mt-3">
-                  After submitting, click the job card on the board to watch live output →
+                  Queue multiple jobs then hit Run All to launch parallel agents →
                 </p>
               </div>
             )}
@@ -153,7 +223,7 @@ export default function Home() {
         </div>
 
         {/* Right: Job detail */}
-        {selectedJob && (
+        {selectedJob && tab !== "agents" && (
           <div className="w-96 flex-shrink-0 border-l border-[#27272a] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#27272a]">
               <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase">
