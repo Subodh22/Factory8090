@@ -32,18 +32,35 @@ console.log("\n🏭  Factory Worker");
 console.log(`📡  Convex: ${CONVEX_URL.slice(0, 40)}…`);
 console.log("👁   Watching for queued jobs…\n");
 
+function launch(job: { _id: string; title: string }) {
+  if (processing.has(job._id)) return;
+  processing.add(job._id);
+  const ts = new Date().toLocaleTimeString();
+  console.log(`▶  [${ts}] Starting: "${job.title}"`);
+  startJob(job._id as Id<"jobs">)
+    .then(() => console.log(`✓  Done:    "${job.title}"`))
+    .catch((err) => console.error(`✗  Failed:  "${job.title}" — ${err}`))
+    .finally(() => processing.delete(job._id));
+}
+
 async function tick() {
   try {
-    const jobs = await convex.query(api.jobs.listByStatus, { status: "queued" });
-    for (const job of jobs) {
-      if (processing.has(job._id)) continue;
-      processing.add(job._id);
-      const ts = new Date().toLocaleTimeString();
-      console.log(`▶  [${ts}] Starting: "${job.title}"`);
-      startJob(job._id as Id<"jobs">)
-        .then(() => console.log(`✓  Done:    "${job.title}"`))
-        .catch((err) => console.error(`✗  Failed:  "${job.title}" — ${err}`))
-        .finally(() => processing.delete(job._id));
+    const queued = await convex.query(api.jobs.listByStatus, { status: "queued" });
+    console.log(`[tick] queued=${queued.length} processing=${processing.size}`);
+    for (const job of queued) launch(job);
+
+    // Resume any paused/completed job when user sends a new message
+    for (const status of ["waiting_for_input", "completed"] as const) {
+      const jobs = await convex.query(api.jobs.listByStatus, { status });
+      for (const job of jobs) {
+        if (!job.lastUserMessageAt) continue;
+        const completedAt = job.completedAt ?? 0;
+        if (job.lastUserMessageAt > completedAt) {
+          const ts = new Date().toLocaleTimeString();
+          console.log(`↩  [${ts}] Resuming: "${job.title}" (user replied)`);
+          launch(job);
+        }
+      }
     }
   } catch (err) {
     console.error(`[worker] tick error: ${err}`);

@@ -2,7 +2,10 @@ import { execSync, spawnSync } from "child_process";
 import path from "path";
 import fs from "fs";
 
-const shell = process.platform === "win32";
+function git(args: string[], cwd: string): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" });
+  return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
 
 export function createWorktree(repoPath: string, jobId: string, baseBranch: string): { worktreePath: string; branch: string } {
   const branch = `job/${jobId}`;
@@ -10,12 +13,7 @@ export function createWorktree(repoPath: string, jobId: string, baseBranch: stri
 
   fs.mkdirSync(path.join(repoPath, ".worktrees"), { recursive: true });
 
-  const result = spawnSync("git", ["worktree", "add", "-b", branch, worktreePath, baseBranch], {
-    cwd: repoPath,
-    stdio: "pipe",
-    shell,
-    encoding: "utf8",
-  });
+  const result = git(["worktree", "add", "-b", branch, worktreePath, baseBranch], repoPath);
 
   if (result.status !== 0) {
     throw new Error(`git worktree add failed: ${result.stderr || result.stdout}`);
@@ -26,8 +24,8 @@ export function createWorktree(repoPath: string, jobId: string, baseBranch: stri
 
 export function removeWorktree(repoPath: string, worktreePath: string) {
   try {
-    spawnSync("git", ["worktree", "remove", "--force", worktreePath], { cwd: repoPath, shell });
-    spawnSync("git", ["worktree", "prune"], { cwd: repoPath, shell });
+    git(["worktree", "remove", "--force", worktreePath], repoPath);
+    git(["worktree", "prune"], repoPath);
   } catch {
     // ignore cleanup errors
   }
@@ -43,10 +41,10 @@ export function getChangedFiles(worktreePath: string): string[] {
 }
 
 export function commitAndPush(worktreePath: string, message: string) {
-  spawnSync("git", ["add", "-A"], { cwd: worktreePath, shell });
-  const commit = spawnSync("git", ["commit", "-m", message], { cwd: worktreePath, shell, encoding: "utf8" });
-  if (commit.status !== 0 && !commit.stdout?.includes("nothing to commit")) {
+  git(["add", "-A"], worktreePath);
+  const commit = git(["commit", "-m", message], worktreePath);
+  if (commit.status !== 0 && !commit.stdout.includes("nothing to commit")) {
     throw new Error(`git commit failed: ${commit.stderr}`);
   }
-  spawnSync("git", ["push", "origin", "HEAD"], { cwd: worktreePath, shell });
+  git(["push", "origin", "HEAD"], worktreePath);
 }

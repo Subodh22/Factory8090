@@ -65,7 +65,8 @@ export const updateStatus = mutation({
       v.literal("running"),
       v.literal("completed"),
       v.literal("failed"),
-      v.literal("cancelled")
+      v.literal("cancelled"),
+      v.literal("waiting_for_input")
     ),
     worktreePath: v.optional(v.string()),
     branch: v.optional(v.string()),
@@ -74,13 +75,41 @@ export const updateStatus = mutation({
     prNumber: v.optional(v.number()),
     touchedPaths: v.optional(v.array(v.string())),
     delegatorPlan: v.optional(v.string()),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, { id, status, ...fields }) => {
-    const updates: Record<string, unknown> = { status, ...fields };
+    const updates: Record<string, unknown> = { status };
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) updates[k] = v;
+    }
     if (status === "running") updates.startedAt = Date.now();
-    if (status === "completed" || status === "failed") updates.completedAt = Date.now();
+    if (status === "completed" || status === "failed" || status === "waiting_for_input") updates.completedAt = Date.now();
     await ctx.db.patch(id, updates);
   },
+});
+
+export const addMessage = mutation({
+  args: {
+    jobId: v.id("jobs"),
+    role: v.union(v.literal("assistant"), v.literal("user")),
+    text: v.string(),
+  },
+  handler: async (ctx, { jobId, role, text }) => {
+    await ctx.db.insert("jobMessages", { jobId, role, text, ts: Date.now() });
+    if (role === "user") {
+      await ctx.db.patch(jobId, { lastUserMessageAt: Date.now() });
+    }
+  },
+});
+
+export const listMessages = query({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) =>
+    ctx.db
+      .query("jobMessages")
+      .withIndex("by_job", (q) => q.eq("jobId", jobId))
+      .order("asc")
+      .collect(),
 });
 
 export const appendOutput = mutation({
