@@ -3,54 +3,43 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
-export interface RunOptions {
-  prompt: string;
-  cwd: string;
-  images?: string[];
-  agentRules?: string;
-  resumeSessionId?: string;        // if set, runs --resume <id> instead of fresh -p
-  onChunk: (text: string) => void;
-  onAssistantText?: (text: string) => void; // only assistant message content blocks
-  onResult?: (text: string) => void;        // the final result event text
-  onSessionId?: (id: string) => void;
-  onDone: () => void;
-  onError: (err: string) => void;
-  signal?: AbortSignal;
+export interface TurnResult {
+  assistantText: string;
+  resultText: string;
 }
 
-export function runClaude(opts: RunOptions): () => void {
-  const { prompt, cwd, images = [], agentRules, resumeSessionId, onChunk, onAssistantText, onResult, onSessionId, onDone, onError, signal } = opts;
+export interface ClaudeSession {
+  /** Send a message and wait for Claude to finish the turn */
+  sendMessage: (text: string) => Promise<TurnResult>;
+  /** Stream chunks to a callback during an active turn */
+  onChunk: (fn: (text: string) => void) => void;
+  /** Called when Claude emits a session_id */
+  onSessionId: (fn: (id: string) => void) => void;
+  /** Kill the process */
+  cancel: () => void;
+}
 
-  const systemAppend = agentRules ? `\n\nProject rules:\n${agentRules}` : "";
-  const fullPrompt = prompt + systemAppend;
+const isWin = process.platform === "win32";
 
-  const imageFiles: string[] = [];
-  for (const dataUrl of images) {
-    const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!matches) continue;
-    const [, ext, b64] = matches;
-    const tmpPath = path.join(os.tmpdir(), `factory-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
-    fs.writeFileSync(tmpPath, Buffer.from(b64, "base64"));
-    imageFiles.push(tmpPath);
-  }
-
-  // Build args: resume existing session or start fresh
-  const args: string[] = resumeSessionId
-    ? ["--resume", resumeSessionId, "-p", fullPrompt, "--output-format", "stream-json", "--verbose"]
-    : ["-p", fullPrompt, "--output-format", "stream-json", "--verbose"];
-
-  for (const img of imageFiles) {
-    args.push("--image", img);
-  }
-
-  const isWin = process.platform === "win32";
-  const proc = spawn("claude", args, {
+/**
+ * Creates a long-running Claude Code session.
+ * The process stays alive between turns — call sendMessage() for each user turn.
+ * Claude processes stdin line-by-line; each message triggers a full response turn.
+ */
+export function createClaudeSession(cwd: string, agentRules?: string): ClaudeSession {
+  const proc = spawn("claude", ["--output-format", "stream-json", "--verbose"], {
     cwd,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
     shell: isWin,
   });
 
   let buffer = "";
+  let chunkHandler: ((text: string) => void) | null = null;
+  let sessionIdHandler: ((id: string) => void) | null = null;
+  let turnResolve: ((result: TurnResult) => void) | null = null;
+  let turnReject: ((err: Error) => void) | null = null;
+  let assistantText = "";
+  let resultText = "";
 
   proc.stdout.on("data", (chunk: Buffer) => {
     buffer += chunk.toString();
@@ -62,54 +51,82 @@ export function runClaude(opts: RunOptions): () => void {
       try {
         const parsed = JSON.parse(line);
 
-        // Capture session_id from any event that has it
-        if (parsed.session_id && onSessionId) {
-          onSessionId(parsed.session_id);
+        if (parsed.session_id && sessionIdHandler) {
+          sessionIdHandler(parsed.session_id);
         }
 
         if (parsed.type === "assistant" && parsed.message?.content) {
           for (const block of parsed.message.content) {
             if (block.type === "text") {
-              onChunk(block.text);
-              onAssistantText?.(block.text);
+              assistantText += block.text;
+              chunkHandler?.(block.text);
             }
           }
         } else if (parsed.type === "result") {
-          // result event fires at end — contains the final text response
-          // send to display, and also fire onResult so caller can use it for detection
           if (parsed.result) {
-            onChunk(parsed.result);
-            onResult?.(parsed.result);
+            resultText = parsed.result;
+            chunkHandler?.(parsed.result);
+          }
+          // Turn is complete — resolve the promise
+          const resolve = turnResolve;
+          turnResolve = null;
+          turnReject = null;
+          if (resolve) {
+            const result = { assistantText, resultText };
+            assistantText = "";
+            resultText = "";
+            Promise.resolve(resolve(result)).catch(() => {});
           }
         }
       } catch {
-        onChunk(line + "\n");
+        chunkHandler?.(line + "\n");
       }
     }
   });
 
   proc.stderr.on("data", (chunk: Buffer) => {
-    onChunk(chunk.toString());
+    chunkHandler?.(chunk.toString());
   });
 
   proc.on("close", (code) => {
-    for (const f of imageFiles) {
-      try { fs.unlinkSync(f); } catch { /* ignore */ }
-    }
-    if (code === 0) {
-      Promise.resolve(onDone()).catch((err) =>
-        console.error("[claude-runner] onDone error:", err)
-      );
-    } else {
-      Promise.resolve(onError(`Process exited with code ${code}`)).catch((err) =>
-        console.error("[claude-runner] onError error:", err)
-      );
+    if (turnReject && code !== 0) {
+      turnReject(new Error(`Claude process exited with code ${code}`));
+      turnResolve = null;
+      turnReject = null;
     }
   });
 
-  if (signal) {
-    signal.addEventListener("abort", () => proc.kill("SIGTERM"));
-  }
+  // Prime Claude with agent rules if provided (sent as first message before any user prompt)
+  const contextPreamble = agentRules
+    ? `Project context:\n${agentRules}\n\nYou are a coding assistant. When given a task, look at the codebase and implement the changes directly.\n`
+    : `You are a coding assistant. When given a task, look at the codebase and implement the changes directly.\n`;
 
-  return () => proc.kill("SIGTERM");
+  // Write the preamble silently — Claude will acknowledge but we ignore this turn's output
+  proc.stdin!.write(contextPreamble + "\n");
+
+  return {
+    sendMessage(text: string): Promise<TurnResult> {
+      assistantText = "";
+      resultText = "";
+      return new Promise((resolve, reject) => {
+        turnResolve = resolve;
+        turnReject = reject;
+        proc.stdin!.write(text + "\n");
+      });
+    },
+
+    onChunk(fn) { chunkHandler = fn; },
+    onSessionId(fn) { sessionIdHandler = fn; },
+    cancel() { proc.kill("SIGTERM"); },
+  };
+}
+
+/** Write a base64 image to a temp file, return path */
+function saveImageFile(dataUrl: string): string | null {
+  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) return null;
+  const [, ext, b64] = matches;
+  const tmpPath = path.join(os.tmpdir(), `factory-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
+  fs.writeFileSync(tmpPath, Buffer.from(b64, "base64"));
+  return tmpPath;
 }

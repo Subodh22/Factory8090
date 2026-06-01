@@ -1,4 +1,4 @@
-import { runClaude } from "./claude-runner";
+import { createClaudeSession } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "./worktree";
 import { createPR } from "./github";
 import { ConvexHttpClient } from "convex/browser";
@@ -12,7 +12,9 @@ function getConvex(): ConvexHttpClient {
   return _convex;
 }
 
-const running = new Map<string, AbortController>();
+// Active Claude sessions — keyed by jobId. Session process stays alive between user turns.
+const activeSessions = new Map<string, ReturnType<typeof createClaudeSession>>();
+const processing = new Set<string>();
 
 function log(jobId: Id<"jobs">, msg: string) {
   const line = `[factory] ${msg}\n`;
@@ -32,35 +34,60 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): 
 }
 
 export async function startJob(jobId: Id<"jobs">) {
-  if (running.has(jobId)) return;
+  if (processing.has(jobId)) return;
+  processing.add(jobId);
 
   const convex = getConvex();
   let worktreePath: string | undefined;
+  let project: Awaited<ReturnType<typeof convex.query<typeof api.projects.get>>> | null = null;
 
   try {
     const job = await withRetry(() => convex.query(api.jobs.get, { id: jobId }));
-    if (!job) return;
-    const project = await withRetry(() => convex.query(api.projects.get, { id: job.projectId }));
-    if (!project) return;
-
-    const ac = new AbortController();
-    running.set(jobId, ac);
+    if (!job) { processing.delete(jobId); return; }
+    project = await withRetry(() => convex.query(api.projects.get, { id: job.projectId }));
+    if (!project) { processing.delete(jobId); return; }
 
     await withRetry(() => convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running" }));
+
+    // ── Existing session: user replied to a waiting job ─────────────────────
+    const existingSession = activeSessions.get(jobId);
+    if (existingSession) {
+      // Get the latest user message to send
+      let messages: { role: "assistant" | "user"; text: string; _id: string }[] = [];
+      try {
+        messages = await withRetry(() => convex.query(api.jobs.listMessages, { jobId }));
+      } catch { /* continue with empty */ }
+
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+      if (!lastUserMsg) { processing.delete(jobId); return; }
+
+      log(jobId, `User replied: "${lastUserMsg.text}"`);
+      log(jobId, "─".repeat(40));
+
+      existingSession.onChunk((text) => {
+        convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
+      });
+
+      worktreePath = job.worktreePath!;
+      const branch = job.branch!;
+
+      const turn = await existingSession.sendMessage(lastUserMsg.text);
+      await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+      processing.delete(jobId);
+      return;
+    }
+
+    // ── New session ──────────────────────────────────────────────────────────
     log(jobId, `Job started — "${job.title}"`);
 
-    // ── Worktree: resume existing or create new ──────────────────────────────
-    let branch: string;
-    let isResume = false;
-
+    // Worktree
     const existingWorktree = job.worktreePath && fs.existsSync(job.worktreePath);
+    let branch: string;
 
-    // Reuse the worktree if it's still on disk — regardless of whether sessionId is set
     if (existingWorktree) {
       worktreePath = job.worktreePath!;
       branch = job.branch!;
-      isResume = !!job.sessionId; // only pass --resume if we actually have a session id
-      log(jobId, isResume ? `Resuming Claude session in ${worktreePath}` : `Reusing worktree in ${worktreePath}`);
+      log(jobId, `Reusing worktree: ${worktreePath}`);
     } else {
       log(jobId, `Repo: ${project.localPath}`);
       log(jobId, "Creating git worktree…");
@@ -74,177 +101,132 @@ export async function startJob(jobId: Id<"jobs">) {
       );
     }
 
-    // ── Build prompt ─────────────────────────────────────────────────────────
-    let messages: { role: "assistant" | "user"; text: string }[] = [];
-    try {
-      messages = await withRetry(() => convex.query(api.jobs.listMessages, { jobId }));
-    } catch {
-      // Non-fatal — continue with empty history
-    }
-
-    // Build prompt — for resumes, inject conversation history so Claude has full context
-    let effectivePrompt: string;
-    if (isResume && messages.length > 0) {
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-      const history = messages
-        .map((m) => `${m.role === "assistant" ? "Claude" : "User"}: ${m.text}`)
-        .join("\n\n");
-      effectivePrompt = [
-        `TASK: ${job.prompt}`,
-        ``,
-        `The user has been asked a clarifying question. Here is the full conversation:`,
-        ``,
-        history,
-        ``,
-        `The user's answer is: "${lastUserMsg?.text ?? ""}"`,
-        ``,
-        `Now look at the codebase, understand the task, and implement the changes. Do NOT ask more questions — just do it.`,
-      ].join("\n");
-      log(jobId, `Continuing with user reply: "${lastUserMsg?.text ?? ""}"`);
-    } else {
-      effectivePrompt = job.prompt;
-    }
-
     log(jobId, "Launching Claude Code CLI…");
     log(jobId, "─".repeat(40));
 
-    let sessionId = job.sessionId;
-    let claudeOutput = "";
-    let assistantText = ""; // text from assistant message content blocks
-    let resultText = "";    // text from the final result event
+    // Create persistent session — process stays alive for the whole job
+    const session = createClaudeSession(worktreePath, project.agentRules);
+    activeSessions.set(jobId, session);
 
-    const onChunk = (text: string) => {
-      claudeOutput += text;
-      convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
-    };
-
-    runClaude({
-      prompt: effectivePrompt,
-      cwd: worktreePath,
-      images: job.images,               // always include images
-      agentRules: project.agentRules,   // always include agent rules for project context
-      resumeSessionId: undefined,
-
-      signal: ac.signal,
-      onChunk,
-      onAssistantText: (text) => { assistantText += text; },
-      onResult: (text) => { resultText = text; },
-      onSessionId: (id) => {
-        sessionId = id;
-        convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", sessionId: id }).catch(() => {});
-      },
-      onDone: async () => {
-        running.delete(jobId);
-        log(jobId, "─".repeat(40));
-
-        const changedFiles = getChangedFiles(worktreePath!);
-        log(jobId, `Changed files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`);
-
-        // If Claude made no changes, keep the session alive for follow-up
-        // Don't try to detect "?" — Claude phrases questions many different ways
-        const claudeResponse = assistantText.trim() || resultText.trim();
-        if (changedFiles.length === 0) {
-          log(jobId, "⏳ Waiting for your reply…");
-          if (claudeResponse) {
-            await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: claudeResponse });
-          }
-          await convex.mutation(api.jobs.updateStatus, {
-            id: jobId,
-            status: "waiting_for_input",
-            sessionId: sessionId ?? undefined,
-          });
-          log(jobId, "Reply in the chat panel to continue.");
-          return;
-        }
-
-        // Normal completion ───────────────────────────────────────────────────
-        try {
-          if (changedFiles.length > 0) {
-            commitAndPush(worktreePath!, `feat: ${job.title}\n\nAutomated by Factory`);
-            log(jobId, "Committed and pushed.");
-          } else {
-            log(jobId, "No changes to commit.");
-          }
-
-          const [owner, repo] = project.repo.split("/");
-          let prUrl: string | undefined;
-          let prNumber: number | undefined;
-
-          if (project.githubToken && changedFiles.length > 0) {
-            log(jobId, "Creating pull request…");
-            try {
-              const pr = await createPR(project.githubToken, owner, repo, {
-                title: job.title,
-                body: `## Changes\n${job.prompt}\n\nAutomated by Factory`,
-                head: branch,
-                base: project.defaultBranch,
-                issueNumber: job.githubIssueNumber,
-              });
-              prUrl = pr.url;
-              prNumber = pr.number;
-              log(jobId, `PR created: ${prUrl}`);
-            } catch (prErr) {
-              log(jobId, `Note: ${prErr} (PR may already exist)`);
-            }
-          }
-
-          await withRetry(() =>
-            convex.mutation(api.jobs.updateStatus, {
-              id: jobId,
-              status: "completed",
-              prUrl,
-              prNumber,
-              touchedPaths: changedFiles,
-              sessionId: sessionId ?? undefined,
-            })
-          );
-          log(jobId, "✓ Job completed successfully.");
-        } catch (err) {
-          const msg = String(err);
-          log(jobId, `ERROR during commit/push/PR: ${msg}`);
-          await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
-        } finally {
-          removeWorktree(project.localPath, worktreePath!);
-          log(jobId, "Worktree cleaned up.");
-        }
-      },
-      onError: async (err) => {
-        running.delete(jobId);
-        log(jobId, "─".repeat(40));
-        log(jobId, `ERROR: ${err}`);
-        await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: err });
-        removeWorktree(project.localPath, worktreePath!);
-      },
+    session.onSessionId((id) => {
+      convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", sessionId: id }).catch(() => {});
     });
+
+    session.onChunk((text) => {
+      convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
+    });
+
+    const turn = await session.sendMessage(job.prompt);
+    await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+    processing.delete(jobId);
+
   } catch (err) {
-    // Top-level catch — marks job failed and cleans up so it never gets stuck
-    running.delete(jobId);
+    processing.delete(jobId);
     const msg = String(err);
     console.error(`[startJob] unhandled error for ${jobId}: ${msg}`);
     try {
-      log(jobId, `FATAL: ${msg}`);
+      log(jobId as Id<"jobs">, `FATAL: ${msg}`);
       await getConvex().mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
-    } catch { /* ignore — best effort */ }
-    if (worktreePath) {
-      try {
-        const job = await getConvex().query(api.jobs.get, { id: jobId });
-        if (job?.projectId) {
-          const project = await getConvex().query(api.projects.get, { id: job.projectId });
-          if (project) removeWorktree(project.localPath, worktreePath);
-        }
-      } catch { /* ignore */ }
+    } catch { /* ignore */ }
+    if (worktreePath && project) {
+      try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
     }
+    cleanupSession(jobId);
+  }
+}
+
+function cleanupSession(jobId: string) {
+  const session = activeSessions.get(jobId);
+  if (session) {
+    session.cancel();
+    activeSessions.delete(jobId);
+  }
+}
+
+interface TurnResultArgs {
+  jobId: Id<"jobs">;
+  turn: { assistantText: string; resultText: string };
+  worktreePath: string;
+  branch: string;
+  project: { localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
+  convex: ConvexHttpClient;
+  keepSession: boolean;
+}
+
+async function handleTurnResult({ jobId, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
+  log(jobId, "─".repeat(40));
+
+  const changedFiles = getChangedFiles(worktreePath);
+  log(jobId, `Changed files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`);
+
+  const claudeResponse = turn.assistantText.trim() || turn.resultText.trim();
+
+  if (changedFiles.length === 0) {
+    // Claude is asking a question or needs more info — save message, wait for reply
+    log(jobId, "⏳ Waiting for your reply…");
+    if (claudeResponse) {
+      await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: claudeResponse });
+    }
+    await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "waiting_for_input" });
+    log(jobId, "Reply in the chat panel to continue.");
+    // Session stays alive in activeSessions — process is NOT killed
+    return;
+  }
+
+  // Claude made changes — commit, PR, complete
+  cleanupSession(jobId);
+  try {
+    commitAndPush(worktreePath, `feat: ${branch}\n\nAutomated by Factory`);
+    log(jobId, "Committed and pushed.");
+
+    const [owner, repo] = project.repo.split("/");
+    let prUrl: string | undefined;
+    let prNumber: number | undefined;
+
+    if (project.githubToken) {
+      log(jobId, "Creating pull request…");
+      try {
+        const job = await convex.query(api.jobs.get, { id: jobId });
+        const pr = await createPR(project.githubToken, owner, repo, {
+          title: job?.title ?? branch,
+          body: `## Changes\n${job?.prompt ?? ""}\n\nAutomated by Factory`,
+          head: branch,
+          base: project.defaultBranch,
+          issueNumber: job?.githubIssueNumber,
+        });
+        prUrl = pr.url;
+        prNumber = pr.number;
+        log(jobId, `PR created: ${prUrl}`);
+      } catch (prErr) {
+        log(jobId, `Note: ${prErr} (PR may already exist)`);
+      }
+    }
+
+    await withRetry(() =>
+      convex.mutation(api.jobs.updateStatus, {
+        id: jobId,
+        status: "completed",
+        prUrl,
+        prNumber,
+        touchedPaths: changedFiles,
+      })
+    );
+    log(jobId, "✓ Job completed successfully.");
+  } catch (err) {
+    const msg = String(err);
+    log(jobId, `ERROR during commit/push/PR: ${msg}`);
+    await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
+  } finally {
+    removeWorktree(project.localPath, worktreePath);
+    log(jobId, "Worktree cleaned up.");
   }
 }
 
 export function cancelJob(jobId: Id<"jobs">) {
-  const ac = running.get(jobId);
-  if (ac) {
-    ac.abort();
-    running.delete(jobId);
-  }
+  cleanupSession(jobId);
+  processing.delete(jobId);
 }
 
 export function getRunningJobs(): string[] {
-  return Array.from(running.keys());
+  return Array.from(processing);
 }

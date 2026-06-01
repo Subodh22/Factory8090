@@ -26,40 +26,38 @@ if (!CONVEX_URL) {
 }
 
 const convex = new ConvexHttpClient(CONVEX_URL);
-const processing = new Set<string>();
+
+// Worker-level dedup — prevents launching the same job twice in one tick
+const launching = new Set<string>();
 
 console.log("\n🏭  Factory Worker");
 console.log(`📡  Convex: ${CONVEX_URL.slice(0, 40)}…`);
 console.log("👁   Watching for queued jobs…\n");
 
-function launch(job: { _id: string; title: string }) {
-  if (processing.has(job._id)) return;
-  processing.add(job._id);
+function launch(job: { _id: string; title: string }, reason: string) {
+  if (launching.has(job._id)) return;
+  launching.add(job._id);
   const ts = new Date().toLocaleTimeString();
-  console.log(`▶  [${ts}] Starting: "${job.title}"`);
+  console.log(`▶  [${ts}] ${reason}: "${job.title}"`);
   startJob(job._id as Id<"jobs">)
-    .then(() => console.log(`✓  Done:    "${job.title}"`))
-    .catch((err) => console.error(`✗  Failed:  "${job.title}" — ${err}`))
-    .finally(() => processing.delete(job._id));
+    .then(() => console.log(`✓  Done: "${job.title}"`))
+    .catch((err) => console.error(`✗  Failed: "${job.title}" — ${err}`))
+    .finally(() => launching.delete(job._id));
 }
 
 async function tick() {
   try {
+    // Pick up fresh queued jobs
     const queued = await convex.query(api.jobs.listByStatus, { status: "queued" });
-    console.log(`[tick] queued=${queued.length} processing=${processing.size}`);
-    for (const job of queued) launch(job);
+    for (const job of queued) launch(job, "Starting");
 
-    // Resume any paused/completed job when user sends a new message
-    for (const status of ["waiting_for_input", "completed"] as const) {
-      const jobs = await convex.query(api.jobs.listByStatus, { status });
-      for (const job of jobs) {
-        if (!job.lastUserMessageAt) continue;
-        const completedAt = job.completedAt ?? 0;
-        if (job.lastUserMessageAt > completedAt) {
-          const ts = new Date().toLocaleTimeString();
-          console.log(`↩  [${ts}] Resuming: "${job.title}" (user replied)`);
-          launch(job);
-        }
+    // Deliver user replies to waiting jobs
+    const waiting = await convex.query(api.jobs.listByStatus, { status: "waiting_for_input" });
+    for (const job of waiting) {
+      if (!job.lastUserMessageAt) continue;
+      const completedAt = job.completedAt ?? 0;
+      if (job.lastUserMessageAt > completedAt) {
+        launch(job, "User replied");
       }
     }
   } catch (err) {
