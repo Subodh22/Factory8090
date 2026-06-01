@@ -8,17 +8,31 @@ function git(args: string[], cwd: string): { status: number | null; stdout: stri
 }
 
 export function createWorktree(repoPath: string, jobId: string, baseBranch: string): { worktreePath: string; branch: string } {
+  const normalizedRepo = path.resolve(repoPath.trim());
+  if (!fs.existsSync(normalizedRepo)) {
+    throw new Error(`Repo path does not exist: ${normalizedRepo}`);
+  }
+
   const branch = `job/${jobId}`;
-  const worktreePath = path.join(repoPath, ".worktrees", jobId);
+  const worktreePath = path.join(normalizedRepo, ".worktrees", jobId);
+  const worktreesDir = path.join(normalizedRepo, ".worktrees");
 
-  fs.mkdirSync(path.join(repoPath, ".worktrees"), { recursive: true });
+  try {
+    fs.mkdirSync(worktreesDir, { recursive: true });
+  } catch {
+    // Fallback for Windows when fs.mkdirSync recursive fails
+    spawnSync("powershell", ["-Command", `New-Item -ItemType Directory -Force -Path "${worktreesDir}"`], { stdio: "pipe" });
+    if (!fs.existsSync(worktreesDir)) {
+      throw new Error(`Failed to create worktrees directory: ${worktreesDir}`);
+    }
+  }
 
-  let result = git(["worktree", "add", "-b", branch, worktreePath, baseBranch], repoPath);
+  let result = git(["worktree", "add", "-b", branch, worktreePath, baseBranch], normalizedRepo);
 
   if (result.status !== 0) {
     // Branch already exists — attach the worktree to the existing branch
     if (result.stderr.includes("already exists")) {
-      result = git(["worktree", "add", worktreePath, branch], repoPath);
+      result = git(["worktree", "add", worktreePath, branch], normalizedRepo);
     }
     if (result.status !== 0) {
       throw new Error(`git worktree add failed: ${result.stderr || result.stdout}`);
