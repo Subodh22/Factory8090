@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function KanbanBoard({ projectId, onSelectJob }: Props) {
-  const jobs = useQuery(api.jobs.list, { projectId }) ?? [];
+  const jobs = useQuery(api.jobs.list, projectId ? { projectId } : {}) ?? [];
 
   const byStatus = Object.fromEntries(
     COLUMNS.map((col) => [col.key, jobs.filter((j) => j.status === col.key)])

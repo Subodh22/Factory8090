@@ -11,22 +11,27 @@ import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory, LogOut, Zap } from "lucide-react";
+import { Plus, Factory, LogOut, Zap, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Home() {
   const { data: session } = useSession();
   const projects = useQuery(api.projects.list, {}) ?? [];
+
+  // null = "All projects" view; a project ID = specific project view
   const [activeProject, setActiveProject] = useState<Id<"projects"> | null>(null);
   const [selectedJob, setSelectedJob] = useState<Id<"jobs"> | null>(null);
   const [showAddProject, setShowAddProject] = useState(false);
   const [tab, setTab] = useState("board");
   const [runningAll, setRunningAll] = useState(false);
 
-  const project = projects.find((p) => p._id === activeProject) ?? projects[0] ?? null;
-  const projectId = project?._id ?? null;
+  const project = activeProject ? (projects.find((p) => p._id === activeProject) ?? null) : null;
+  const projectId = project?._id; // undefined when "All" is selected
 
-  const allJobs = useQuery(api.jobs.list, projectId ? { projectId } : "skip") ?? [];
+  const allJobs = useQuery(
+    api.jobs.list,
+    projectId ? { projectId } : {}
+  ) ?? [];
   const runningCount = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const pendingCount = allJobs.filter((j) => j.status === "pending").length;
 
@@ -55,20 +60,34 @@ export default function Home() {
     <div className="h-screen flex flex-col bg-[#0a0a0b] text-zinc-100 overflow-hidden">
       {/* Top Bar */}
       <header className="flex items-center justify-between px-4 h-12 border-b border-[#27272a] flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2 mr-2">
             <Factory className="w-4 h-4 text-indigo-400" />
             <span className="text-sm font-semibold tracking-tight">Factory</span>
           </div>
 
-          <div className="w-px h-4 bg-zinc-800" />
+          <div className="w-px h-4 bg-zinc-800 mr-1" />
 
+          {/* All projects button */}
+          <button
+            onClick={() => setActiveProject(null)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
+              activeProject === null
+                ? "bg-[#1e1e22] text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            <LayoutGrid className="w-3 h-3" />
+            All
+          </button>
+
+          {/* Per-project buttons */}
           {projects.map((p) => (
             <button
               key={p._id}
               onClick={() => setActiveProject(p._id)}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                p._id === projectId
+                p._id === activeProject
                   ? "bg-[#1e1e22] text-zinc-100"
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
@@ -80,6 +99,7 @@ export default function Home() {
               {p.name}
             </button>
           ))}
+
           <button
             onClick={() => setShowAddProject(true)}
             className="flex items-center gap-1 px-2 py-1 text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
@@ -90,7 +110,7 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Run All button */}
+          {/* Run All — only available when a specific project is selected */}
           {projectId && pendingCount > 0 && (
             <button
               onClick={handleRunAll}
@@ -102,7 +122,6 @@ export default function Home() {
             </button>
           )}
 
-          {/* Running agents badge */}
           {runningCount > 0 && (
             <button
               onClick={() => setTab("agents")}
@@ -145,9 +164,9 @@ export default function Home() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Feed */}
+        {/* Left: Feed — filtered by active project */}
         <div className="w-64 flex-shrink-0 border-r border-[#27272a] flex flex-col overflow-hidden">
-          <MasterFeed onSelectJob={setSelectedJob} />
+          <MasterFeed projectId={projectId} onSelectJob={setSelectedJob} />
         </div>
 
         {/* Center */}
@@ -177,29 +196,12 @@ export default function Home() {
           </div>
 
           <div className="flex-1 overflow-hidden p-4">
-            {tab === "board" && projectId ? (
+            {tab === "board" && (
               <KanbanBoard projectId={projectId} onSelectJob={setSelectedJob} />
-            ) : tab === "board" ? (
-              <div className="flex flex-col items-center justify-center h-full gap-3">
-                <Factory className="w-10 h-10 text-zinc-800" />
-                <p className="text-sm text-zinc-600">Add a project to get started</p>
-                <button
-                  onClick={() => setShowAddProject(true)}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
-                >
-                  Add your first repo →
-                </button>
-              </div>
-            ) : null}
-
-            {tab === "agents" && projectId && (
-              <AgentsGrid projectId={projectId} />
             )}
 
-            {tab === "agents" && !projectId && (
-              <div className="flex flex-col items-center justify-center h-full gap-3">
-                <p className="text-sm text-zinc-600">Add a project first</p>
-              </div>
+            {tab === "agents" && (
+              <AgentsGrid projectId={projectId} />
             )}
 
             {tab === "chat" && projectId && (
@@ -216,7 +218,8 @@ export default function Home() {
 
             {tab === "chat" && !projectId && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
-                <p className="text-sm text-zinc-600">Add a project first</p>
+                <p className="text-sm text-zinc-500">Select a project to create a job</p>
+                <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
               </div>
             )}
           </div>

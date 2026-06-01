@@ -6,6 +6,28 @@ import { StatusBadge } from "./StatusBadge";
 import { GitBranch, Clock, ExternalLink } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "text";
+
+function parseAgentLine(raw: string): { type: LineType; text: string } {
+  if (raw.startsWith("\x00tool\x00")) return { type: "tool", text: raw.slice(7) };
+  if (raw.startsWith("\x00bash\x00")) return { type: "bash", text: raw.slice(7) };
+  if (raw.startsWith("\x00stderr\x00")) return { type: "stderr", text: raw.slice(9) };
+  if (raw.startsWith("[factory]")) return { type: "factory", text: raw };
+  if (/ERROR|FATAL/.test(raw)) return { type: "error", text: raw };
+  return { type: "text", text: raw };
+}
+
+function agentLineClass(type: LineType): string {
+  switch (type) {
+    case "tool":    return "text-cyan-400";
+    case "bash":    return "text-amber-300";
+    case "stderr":  return "text-zinc-700";
+    case "factory": return "text-indigo-400";
+    case "error":   return "text-red-400";
+    case "text":    return "text-zinc-300";
+  }
+}
+
 interface MiniTerminalProps {
   jobId: Id<"jobs">;
   isRunning: boolean;
@@ -24,21 +46,15 @@ function MiniTerminal({ jobId, isRunning }: MiniTerminalProps) {
     <div className="flex-1 overflow-y-auto bg-[#080809] p-3 min-h-0 font-mono text-[10px]">
       {output ? (
         <pre className="whitespace-pre-wrap leading-relaxed">
-          {output.split("\n").map((line, i) => {
-            const isFactory = line.startsWith("[factory]");
-            const isError = line.includes("ERROR") || line.includes("error:");
-            const isDivider = /^─+$/.test(line.trim());
+          {output.split("\n").map((raw, i) => {
+            if (!raw) return <span key={i}>{"\n"}</span>;
+            const { type, text } = parseAgentLine(raw);
             return (
-              <span key={i} className={
-                isDivider ? "text-zinc-800" :
-                isError ? "text-red-400" :
-                isFactory ? "text-indigo-400" :
-                "text-zinc-300"
-              }>{line}{"\n"}</span>
+              <span key={i} className={agentLineClass(type)}>{text}{"\n"}</span>
             );
           })}
           {isRunning && (
-            <span className="inline-block w-1.5 h-3 bg-indigo-400 animate-pulse ml-0.5 align-middle" />
+            <span className="inline-block w-1.5 h-3 bg-cyan-400 animate-pulse ml-0.5 align-middle opacity-60" />
           )}
         </pre>
       ) : (
@@ -53,9 +69,11 @@ function MiniTerminal({ jobId, isRunning }: MiniTerminalProps) {
 
 interface AgentCardProps {
   jobId: Id<"jobs">;
+  projectName?: string;
+  projectColor?: string;
 }
 
-function AgentCard({ jobId }: AgentCardProps) {
+function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
   const job = useQuery(api.jobs.get, { id: jobId });
   if (!job) return null;
 
@@ -66,15 +84,24 @@ function AgentCard({ jobId }: AgentCardProps) {
 
   return (
     <div className="flex flex-col bg-[#0d0d0f] border border-[#27272a] rounded-lg overflow-hidden" style={{ height: 320 }}>
-      {/* Agent card header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#27272a] flex-shrink-0">
         <div className="flex gap-1.5">
           <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-green-500 animate-pulse" : job.status === "completed" ? "bg-green-700" : "bg-red-700"}`} />
           <div className="w-2 h-2 rounded-full bg-zinc-700" />
           <div className="w-2 h-2 rounded-full bg-zinc-700" />
         </div>
-        <span className="text-[10px] text-zinc-500 truncate max-w-[160px] mx-2">{job.title}</span>
-        <div className="flex items-center gap-2">
+        <div className="flex-1 mx-2 min-w-0">
+          <span className="text-[10px] text-zinc-500 truncate block">{job.title}</span>
+          {projectName && (
+            <span
+              className="text-[9px] px-1 rounded"
+              style={{ color: projectColor ?? "#6366f1" }}
+            >
+              {projectName}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
           {elapsed !== null && (
             <span className="flex items-center gap-1 text-[10px] text-zinc-600">
               <Clock className="w-2.5 h-2.5" />{elapsed}s
@@ -84,7 +111,6 @@ function AgentCard({ jobId }: AgentCardProps) {
         </div>
       </div>
 
-      {/* Branch + PR row */}
       {(job.branch || job.prUrl) && (
         <div className="flex items-center gap-3 px-3 py-1.5 border-b border-[#1a1a1d] flex-shrink-0">
           {job.branch && (
@@ -114,11 +140,13 @@ function AgentCard({ jobId }: AgentCardProps) {
 }
 
 interface Props {
-  projectId: Id<"projects">;
+  projectId?: Id<"projects">;
 }
 
 export function AgentsGrid({ projectId }: Props) {
-  const jobs = useQuery(api.jobs.list, { projectId }) ?? [];
+  const jobs = useQuery(api.jobs.list, projectId ? { projectId } : {}) ?? [];
+  const projects = useQuery(api.projects.list, {}) ?? [];
+  const projectMap = Object.fromEntries(projects.map((p) => [p._id, p]));
 
   const activeJobs = jobs.filter((j) =>
     j.status === "running" || j.status === "queued"
@@ -142,6 +170,8 @@ export function AgentsGrid({ projectId }: Props) {
     );
   }
 
+  const showProjectTag = !projectId;
+
   return (
     <div className="h-full overflow-y-auto">
       {activeJobs.length > 0 && (
@@ -150,9 +180,17 @@ export function AgentsGrid({ projectId }: Props) {
             Active — {activeJobs.length} agent{activeJobs.length !== 1 ? "s" : ""} running
           </p>
           <div className="grid grid-cols-2 gap-3">
-            {activeJobs.map((j) => (
-              <AgentCard key={j._id} jobId={j._id} />
-            ))}
+            {activeJobs.map((j) => {
+              const p = projectMap[j.projectId];
+              return (
+                <AgentCard
+                  key={j._id}
+                  jobId={j._id}
+                  projectName={showProjectTag ? p?.name : undefined}
+                  projectColor={showProjectTag ? p?.color : undefined}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -162,9 +200,17 @@ export function AgentsGrid({ projectId }: Props) {
             Recent
           </p>
           <div className="grid grid-cols-2 gap-3">
-            {recentJobs.map((j) => (
-              <AgentCard key={j._id} jobId={j._id} />
-            ))}
+            {recentJobs.map((j) => {
+              const p = projectMap[j.projectId];
+              return (
+                <AgentCard
+                  key={j._id}
+                  jobId={j._id}
+                  projectName={showProjectTag ? p?.name : undefined}
+                  projectColor={showProjectTag ? p?.color : undefined}
+                />
+              );
+            })}
           </div>
         </div>
       )}
