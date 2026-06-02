@@ -122,7 +122,8 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
       }
     }
 
-    await create({ ...form, localPath, githubToken: session?.accessToken ?? form.githubToken });
+    const { codemapHint: _unused, ...projectFields } = form;
+    await create({ ...projectFields, localPath, githubToken: session?.accessToken ?? form.githubToken });
 
     // Write CLAUDE.md to the repo (skips if one already exists)
     try {
