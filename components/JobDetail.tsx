@@ -34,6 +34,8 @@ function lineClass(type: LineType): string {
   }
 }
 
+const SSE_BASE = process.env.NEXT_PUBLIC_WORKER_SSE_URL ?? "http://localhost:3099";
+
 export function JobDetail({ jobId }: Props) {
   const job = useQuery(api.jobs.get, { id: jobId });
   const chunks = useQuery(api.jobs.getOutput, { jobId });
@@ -42,10 +44,50 @@ export function JobDetail({ jobId }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [sseOutput, setSseOutput] = useState<string | null>(null);
+  const convexOutput = chunks?.map((c) => c.text).join("") ?? "";
 
-  const output = chunks?.map((c) => c.text).join("") ?? "";
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
+
+  // While running, stream output directly from the worker via SSE (bypasses
+  // the Convex cloud round-trip). Seed with whatever Convex has already stored
+  // so we don't miss output from before the connection was established.
+  const convexOutputRef = useRef(convexOutput);
+  convexOutputRef.current = convexOutput;
+
+  useEffect(() => {
+    if (!isRunning) {
+      setSseOutput(null);
+      return;
+    }
+
+    let accumulated = convexOutputRef.current;
+    setSseOutput(accumulated);
+
+    const es = new EventSource(`${SSE_BASE}/stream/${encodeURIComponent(jobId)}`);
+
+    es.onmessage = (e) => {
+      try {
+        const { text } = JSON.parse(e.data) as { text: string };
+        accumulated += text;
+        setSseOutput(accumulated);
+      } catch { /* ignore malformed events */ }
+    };
+
+    es.onerror = () => {
+      setSseOutput(null); // fall back to Convex output
+      es.close();
+    };
+
+    return () => {
+      es.close();
+      setSseOutput(null);
+    };
+  }, [jobId, isRunning]);
+
+  // Use SSE output while running (fast path), Convex output otherwise (source of truth)
+  const output = (isRunning && sseOutput !== null) ? sseOutput : convexOutput;
   const canChat = job?.status !== "pending";
 
   // Derive the last active tool for the live status pill

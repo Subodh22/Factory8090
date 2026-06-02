@@ -2,6 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { startJob } from "../lib/queue";
+import { startSseServer } from "../lib/sse-server";
 import fs from "fs";
 import path from "path";
 
@@ -29,6 +30,9 @@ const convex = new ConvexHttpClient(CONVEX_URL);
 
 // Worker-level dedup — prevents launching the same job twice in one tick
 const launching = new Set<string>();
+
+const SSE_PORT = Number(process.env.WORKER_SSE_PORT ?? 3099);
+startSseServer(SSE_PORT);
 
 console.log("\n🏭  Factory Worker");
 console.log(`📡  Convex: ${CONVEX_URL.slice(0, 40)}…`);

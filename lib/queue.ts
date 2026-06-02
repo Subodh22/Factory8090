@@ -1,6 +1,7 @@
 ﻿import { createClaudeSession } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "./worktree";
 import { createPR } from "./github";
+import { broadcast } from "./sse-server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -30,6 +31,7 @@ const processing = new Set<string>();
 
 function log(jobId: Id<"jobs">, msg: string) {
   const line = `[factory] ${msg}\n`;
+  broadcast(jobId, line);
   getConvex().mutation(api.jobs.appendOutput, { jobId, text: line }).catch(() => {});
 }
 
@@ -77,6 +79,7 @@ export async function startJob(jobId: Id<"jobs">) {
       log(jobId, "-".repeat(40));
 
       existingSession.onChunk((text) => {
+        broadcast(jobId, text);
         convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
       });
 
@@ -126,6 +129,7 @@ export async function startJob(jobId: Id<"jobs">) {
     });
 
     session.onChunk((text) => {
+      broadcast(jobId, text);
       convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
     });
 
