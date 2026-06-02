@@ -66,7 +66,7 @@ async function tick() {
 }
 
 tick();
-const interval = setInterval(tick, 2000);
+const interval = setInterval(tick, 200);
 
 process.on("SIGINT", () => {
   clearInterval(interval);
