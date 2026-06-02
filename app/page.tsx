@@ -11,24 +11,34 @@ import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory, LogOut, Zap, LayoutGrid, CircleDollarSign } from "lucide-react";
+import { Plus, Factory, LogOut, Zap, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 
-const DAILY_BUDGET_USD = 5;
+// Approximate Claude Pro session token cap (~88K tokens per 5-hour window)
+const SESSION_TOKEN_CAP = 88_000;
 
-function UsagePill({ costUsd, inputTokens, outputTokens }: { costUsd: number; inputTokens: number; outputTokens: number }) {
-  const pct = Math.min((costUsd / DAILY_BUDGET_USD) * 100, 100);
-  const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-indigo-500";
+function fmtTokens(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return `${n}`;
+}
+
+function UsagePill({ inputTokens, outputTokens, jobCount }: { inputTokens: number; outputTokens: number; jobCount: number }) {
+  const total = inputTokens + outputTokens;
+  const pct = Math.min((total / SESSION_TOKEN_CAP) * 100, 100);
+  const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-blue-500";
 
   return (
     <div
-      className="flex items-center gap-2 px-2.5 py-1 bg-zinc-900 rounded-full border border-zinc-800 cursor-default group relative"
-      title={`Today: ${(inputTokens + outputTokens).toLocaleString()} tokens · $${costUsd.toFixed(4)}`}
+      className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-full border border-zinc-800 cursor-default"
+      title={`Today: ${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in · ${outputTokens.toLocaleString()} out) across ${jobCount} job${jobCount !== 1 ? "s" : ""}`}
     >
-      <CircleDollarSign className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-zinc-400 leading-none">${costUsd.toFixed(3)}</span>
-        <div className="w-16 h-1 bg-zinc-800 rounded-full overflow-hidden">
+      <div className="flex flex-col gap-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] text-zinc-300 leading-none font-medium">{fmtTokens(total)} tokens</span>
+          <span className="text-[10px] text-zinc-500 leading-none">{Math.round(pct)}% used</span>
+        </div>
+        <div className="w-24 h-1 bg-zinc-800 rounded-full overflow-hidden">
           <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
         </div>
       </div>
@@ -156,8 +166,8 @@ export default function Home() {
             </button>
           )}
 
-          {todayStats && (todayStats.costUsd > 0 || todayStats.jobCount > 0) && (
-            <UsagePill costUsd={todayStats.costUsd} inputTokens={todayStats.inputTokens} outputTokens={todayStats.outputTokens} />
+          {todayStats && todayStats.jobCount > 0 && (
+            <UsagePill inputTokens={todayStats.inputTokens} outputTokens={todayStats.outputTokens} jobCount={todayStats.jobCount} />
           )}
 
           <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
