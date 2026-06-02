@@ -6,6 +6,9 @@ import os from "os";
 export interface TurnResult {
   assistantText: string;
   resultText: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
 }
 
 export interface ClaudeSession {
@@ -120,6 +123,9 @@ export function createClaudeSession(cwd: string): ClaudeSession {
       let resultText = "";
       let resolved = false;
       let needsNewline = false;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let costUsd = 0;
 
       function finish(result: TurnResult) {
         if (resolved) return;
@@ -144,6 +150,11 @@ export function createClaudeSession(cwd: string): ClaudeSession {
             }
 
             if (parsed.type === "assistant" && parsed.message?.content) {
+              const usage = parsed.message.usage;
+              if (usage) {
+                inputTokens = Math.max(inputTokens, usage.input_tokens ?? 0);
+                outputTokens += usage.output_tokens ?? 0;
+              }
               for (const block of parsed.message.content) {
                 if (block.type === "text" && block.text) {
                   assistantText += block.text;
@@ -157,7 +168,8 @@ export function createClaudeSession(cwd: string): ClaudeSession {
               }
             } else if (parsed.type === "result") {
               resultText = parsed.result ?? "";
-              finish({ assistantText, resultText });
+              costUsd = parsed.total_cost_usd ?? 0;
+              finish({ assistantText, resultText, inputTokens, outputTokens, costUsd });
             }
           } catch {
             // Non-JSON startup noise — stream as plain text
@@ -175,7 +187,7 @@ export function createClaudeSession(cwd: string): ClaudeSession {
         currentProc = null;
         if (!resolved) {
           if (code === 0 || assistantText) {
-            finish({ assistantText, resultText });
+            finish({ assistantText, resultText, inputTokens, outputTokens, costUsd });
           } else {
             reject(new Error(`Claude exited with code ${code}`));
           }

@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, GitBranch, Clock, Send } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Send, Coins } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -100,6 +100,12 @@ export function JobDetail({ jobId }: Props) {
             <span className="flex items-center gap-1">
               <Clock className="w-2.5 h-2.5" />
               {elapsed}s
+            </span>
+          )}
+          {job.costUsd != null && job.costUsd > 0 && (
+            <span className="flex items-center gap-1 text-zinc-500" title={`Input: ${(job.inputTokens ?? 0).toLocaleString()} · Output: ${(job.outputTokens ?? 0).toLocaleString()}`}>
+              <Coins className="w-2.5 h-2.5" />
+              ${job.costUsd.toFixed(4)} · {((job.inputTokens ?? 0) + (job.outputTokens ?? 0)).toLocaleString()} tok
             </span>
           )}
           {job.prUrl && (

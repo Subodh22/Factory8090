@@ -23,7 +23,8 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
     localPath: "",
     defaultBranch: "main",
     githubToken: "",
-    agentRules: "Always run tests before pushing.\nUse conventional commits.",
+    agentRules: "Always run tests before pushing.\nUse conventional commits.\nFocus only on files relevant to the task — do not explore the full codebase.",
+    codemapHint: "",
     color: COLORS[0],
   });
 
@@ -122,6 +123,23 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
     }
 
     await create({ ...form, localPath, githubToken: session?.accessToken ?? form.githubToken });
+
+    // Write CLAUDE.md to the repo (skips if one already exists)
+    try {
+      await fetch("/api/projects/claudemd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          localPath,
+          projectName: form.name,
+          codemapHint: form.codemapHint,
+          agentRules: form.agentRules,
+        }),
+      });
+    } catch {
+      // Non-fatal — project is still created
+    }
+
     toast.success("Project added");
     onClose();
   }
@@ -280,6 +298,25 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setForm({ ...form, defaultBranch: e.target.value })}
               className="bg-[#0a0a0b] border-[#27272a] text-zinc-100"
             />
+          </div>
+
+          {/* Project structure (used to generate CLAUDE.md) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-zinc-500 uppercase tracking-widest">
+                Project Structure <span className="text-zinc-700 normal-case">(for CLAUDE.md)</span>
+              </label>
+            </div>
+            <Textarea
+              value={form.codemapHint}
+              onChange={(e) => setForm({ ...form, codemapHint: e.target.value })}
+              rows={4}
+              placeholder={`Describe where things live, e.g.:\n- src/auth/ — all auth logic\n- src/app/api/ — API routes\n- convex/ — database functions\n- Ignore: node_modules, dist, .next`}
+              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100 text-xs resize-none placeholder:text-zinc-700"
+            />
+            <p className="text-[10px] text-zinc-600 mt-1">
+              Written to CLAUDE.md in the repo root — helps Claude find the right files without exploring everything
+            </p>
           </div>
 
           {/* Agent rules */}

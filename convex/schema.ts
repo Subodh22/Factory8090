@@ -43,6 +43,9 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
     delegatorPlan: v.optional(v.string()),  // JSON: subtasks from Delegator
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    costUsd: v.optional(v.number()),
   })
     .index("by_project", ["projectId"])
     .index("by_status", ["status"])

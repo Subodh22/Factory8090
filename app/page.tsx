@@ -11,8 +11,30 @@ import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory, LogOut, Zap, LayoutGrid } from "lucide-react";
+import { Plus, Factory, LogOut, Zap, LayoutGrid, CircleDollarSign } from "lucide-react";
 import { toast } from "sonner";
+
+const DAILY_BUDGET_USD = 5;
+
+function UsagePill({ costUsd, inputTokens, outputTokens }: { costUsd: number; inputTokens: number; outputTokens: number }) {
+  const pct = Math.min((costUsd / DAILY_BUDGET_USD) * 100, 100);
+  const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-indigo-500";
+
+  return (
+    <div
+      className="flex items-center gap-2 px-2.5 py-1 bg-zinc-900 rounded-full border border-zinc-800 cursor-default group relative"
+      title={`Today: ${(inputTokens + outputTokens).toLocaleString()} tokens · $${costUsd.toFixed(4)}`}
+    >
+      <CircleDollarSign className="w-3 h-3 text-zinc-500 flex-shrink-0" />
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[10px] text-zinc-400 leading-none">${costUsd.toFixed(3)}</span>
+        <div className="w-16 h-1 bg-zinc-800 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const { data: session } = useSession();
@@ -27,6 +49,8 @@ export default function Home() {
 
   const project = activeProject ? (projects.find((p) => p._id === activeProject) ?? null) : null;
   const projectId = project?._id; // undefined when "All" is selected
+
+  const todayStats = useQuery(api.jobs.getTodayStats, {});
 
   const allJobs = useQuery(
     api.jobs.list,
@@ -130,6 +154,10 @@ export default function Home() {
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
               {runningCount} running
             </button>
+          )}
+
+          {todayStats && (todayStats.costUsd > 0 || todayStats.jobCount > 0) && (
+            <UsagePill costUsd={todayStats.costUsd} inputTokens={todayStats.inputTokens} outputTokens={todayStats.outputTokens} />
           )}
 
           <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">

@@ -5,6 +5,18 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import fs from "fs";
+import path from "path";
+
+/** Read CLAUDE.md from the worktree root, or null if it doesn't exist. */
+function readClaudeMd(dir: string): string | null {
+  const p = path.join(dir, "CLAUDE.md");
+  try {
+    return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
+  } catch {
+    return null;
+  }
+}
+
 
 let _convex: ConvexHttpClient | null = null;
 function getConvex(): ConvexHttpClient {
@@ -72,6 +84,7 @@ export async function startJob(jobId: Id<"jobs">) {
       const branch = job.branch!;
 
       const turn = await existingSession.sendMessage(lastUserMsg.text);
+      await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
       await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
       processing.delete(jobId);
       return;
@@ -116,12 +129,16 @@ export async function startJob(jobId: Id<"jobs">) {
       convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
     });
 
-    // Prepend agent rules to the first message so Claude has full project context
-    const systemContext = project.agentRules
-      ? `Project context:\n${project.agentRules}\n\nYou are a coding assistant. Implement tasks directly by reading and modifying files in the repo.\n\n---\n\n`
-      : `You are a coding assistant. Implement tasks directly by reading and modifying files in the repo.\n\n---\n\n`;
+    const baseRules = project.agentRules ? `${project.agentRules}\n\n` : "";
+    const hasClaude = readClaudeMd(worktreePath) !== null;
+    const claudeHint = hasClaude
+      ? "Read CLAUDE.md before starting.\n\n"
+      : "No CLAUDE.md found — create one first, then do the task.\n\n";
+
+    const systemContext = `${baseRules}${claudeHint}---\n\n`;
 
     const turn = await session.sendMessage(systemContext + job.prompt);
+    await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
     await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
     processing.delete(jobId);
 

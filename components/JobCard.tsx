@@ -17,6 +17,9 @@ interface Job {
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
 }
 
 export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs">) => void }) {
@@ -73,6 +76,11 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
             </span>
           )}
           {elapsed !== null && <span>{elapsed}s</span>}
+          {job.costUsd != null && job.costUsd > 0 && (
+            <span className="text-zinc-500" title={`${((job.inputTokens ?? 0) + (job.outputTokens ?? 0)).toLocaleString()} tokens`}>
+              ${job.costUsd.toFixed(3)}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1">

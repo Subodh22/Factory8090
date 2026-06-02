@@ -133,6 +133,45 @@ export const getOutput = query({
       .collect(),
 });
 
+export const updateUsage = mutation({
+  args: {
+    id: v.id("jobs"),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    costUsd: v.number(),
+  },
+  handler: async (ctx, { id, inputTokens, outputTokens, costUsd }) => {
+    const job = await ctx.db.get(id);
+    if (!job) return;
+    await ctx.db.patch(id, {
+      inputTokens: (job.inputTokens ?? 0) + inputTokens,
+      outputTokens: (job.outputTokens ?? 0) + outputTokens,
+      costUsd: (job.costUsd ?? 0) + costUsd,
+    });
+  },
+});
+
+export const getTodayStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const jobs = await ctx.db
+      .query("jobs")
+      .filter((q) => q.gte(q.field("createdAt"), dayStart.getTime()))
+      .collect();
+    return jobs.reduce(
+      (acc, j) => ({
+        inputTokens: acc.inputTokens + (j.inputTokens ?? 0),
+        outputTokens: acc.outputTokens + (j.outputTokens ?? 0),
+        costUsd: acc.costUsd + (j.costUsd ?? 0),
+        jobCount: acc.jobCount + 1,
+      }),
+      { inputTokens: 0, outputTokens: 0, costUsd: 0, jobCount: 0 }
+    );
+  },
+});
+
 export const cancel = mutation({
   args: { id: v.id("jobs") },
   handler: async (ctx, { id }) =>
