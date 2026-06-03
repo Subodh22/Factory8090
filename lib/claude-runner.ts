@@ -17,6 +17,7 @@ export interface ClaudeSession {
   sendMessage: (text: string) => Promise<TurnResult>;
   onChunk: (fn: (text: string) => void) => void;
   onSessionId: (fn: (id: string) => void) => void;
+  getSessionId: () => string | null;
   cancel: () => void;
 }
 
@@ -77,8 +78,8 @@ function formatToolUse(name: string, input: Record<string, unknown>): string {
  * Chunks are prefixed with \x00tool\x00 / \x00bash\x00 / \x00stderr\x00
  * so the UI can colour-code them.
  */
-export function createClaudeSession(cwd: string): ClaudeSession {
-  let currentSessionId: string | null = null;
+export function createClaudeSession(cwd: string, resumeSessionId?: string): ClaudeSession {
+  let currentSessionId: string | null = resumeSessionId ?? null;
   let chunkHandler: ((text: string) => void) | null = null;
   let sessionIdHandler: ((id: string) => void) | null = null;
   let currentProc: ReturnType<typeof spawn> | null = null;
@@ -204,6 +205,7 @@ export function createClaudeSession(cwd: string): ClaudeSession {
     sendMessage: spawnTurn,
     onChunk(fn) { chunkHandler = fn; },
     onSessionId(fn) { sessionIdHandler = fn; },
+    getSessionId() { return currentSessionId; },
     cancel() {
       cancelled = true;
       currentProc?.kill("SIGTERM");

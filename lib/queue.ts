@@ -26,9 +26,15 @@ function getConvex(): ConvexHttpClient {
   return _convex;
 }
 
-// Active Claude sessions â€” keyed by jobId. Session process stays alive between user turns.
+// Active Claude sessions — keyed by jobId. Session process stays alive between user turns.
 const activeSessions = new Map<string, ReturnType<typeof createClaudeSession>>();
 const processing = new Set<string>();
+
+// Per-project session continuity — carry the session ID across jobs so Claude
+// doesn't cold-start on every task. Reset when tokens approach the cap.
+const TOKEN_RESUME_CAP = 60_000;
+interface ProjectSession { sessionId: string; inputTokens: number }
+const projectSessions = new Map<string, ProjectSession>();
 
 function log(jobId: Id<"jobs">, msg: string) {
   const line = `[factory] ${msg}\n`;
@@ -89,13 +95,19 @@ export async function startJob(jobId: Id<"jobs">) {
 
       const turn = await existingSession.sendMessage(lastUserMsg.text);
       await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
+
+      const replySessionId = existingSession.getSessionId();
+      if (replySessionId) {
+        projectSessions.set(job.projectId, { sessionId: replySessionId, inputTokens: turn.inputTokens });
+      }
+
       await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
       processing.delete(jobId);
       return;
     }
 
     // -- New session ----------------------------------------------------------
-    log(jobId, `Job started â€” "${job.title}"`);
+    log(jobId, `Job started â€" "${job.title}"`);
 
     // Worktree
     const existingWorktree = job.worktreePath && fs.existsSync(job.worktreePath);
@@ -118,11 +130,18 @@ export async function startJob(jobId: Id<"jobs">) {
       );
     }
 
-    log(jobId, "Launching Claude Code CLIâ€¦");
+    log(jobId, "Launching Claude Code CLI...");
     log(jobId, "-".repeat(40));
 
-    // Create persistent session â€” process stays alive for the whole job
-    const session = createClaudeSession(worktreePath);
+    // Resume the project's last session if tokens are safely below the cap
+    const prevSession = projectSessions.get(job.projectId);
+    const resumeId = prevSession && prevSession.inputTokens < TOKEN_RESUME_CAP
+      ? prevSession.sessionId
+      : undefined;
+    if (resumeId) log(jobId, `Resuming project session ${resumeId.slice(0, 8)}...`);
+
+    // Create persistent session - process stays alive for the whole job
+    const session = createClaudeSession(worktreePath, resumeId);
     activeSessions.set(jobId, session);
 
     session.onSessionId((id) => {
@@ -138,13 +157,23 @@ export async function startJob(jobId: Id<"jobs">) {
     const hasClaude = readClaudeMd(worktreePath) !== null;
     const claudeHint = hasClaude
       ? "Read CLAUDE.md before starting.\n\n"
-      : "No CLAUDE.md found — create one first, then do the task.\n\n";
+      : "No CLAUDE.md found - create one first, then do the task.\n\n";
     const repoMap = buildRepoMap(worktreePath);
+    const resumeNote = resumeId
+      ? `You are continuing work on this project in a new worktree at: ${worktreePath}\n\n`
+      : "";
 
-    const systemContext = `${baseRules}${claudeHint}${repoMap}\n---\n\n`;
+    const systemContext = `${baseRules}${claudeHint}${resumeNote}${repoMap}\n---\n\n`;
 
     const turn = await session.sendMessage(systemContext + job.prompt);
     await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
+
+    // Persist session ID + token count for next job on this project
+    const finalSessionId = session.getSessionId();
+    if (finalSessionId) {
+      projectSessions.set(job.projectId, { sessionId: finalSessionId, inputTokens: turn.inputTokens });
+    }
+
     await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
     processing.delete(jobId);
 
@@ -190,18 +219,18 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
   const claudeResponse = turn.assistantText.trim() || turn.resultText.trim();
 
   if (changedFiles.length === 0) {
-    // Claude is asking a question or needs more info â€” save message, wait for reply
+    // Claude is asking a question or needs more info â€" save message, wait for reply
     log(jobId, "â³ Waiting for your replyâ€¦");
     if (claudeResponse) {
       await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: claudeResponse });
     }
     await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "waiting_for_input" });
     log(jobId, "Reply in the chat panel to continue.");
-    // Session stays alive in activeSessions â€” process is NOT killed
+    // Session stays alive in activeSessions â€" process is NOT killed
     return;
   }
 
-  // Claude made changes â€” commit, PR, complete
+  // Claude made changes â€" commit, PR, complete
   cleanupSession(jobId);
   try {
     commitAndPush(worktreePath, `feat: ${branch}\n\nAutomated by Factory`);
@@ -239,7 +268,7 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
         touchedPaths: changedFiles,
       })
     );
-    log(jobId, "âœ“ Job completed successfully.");
+    log(jobId, "Job completed successfully.");
   } catch (err) {
     const msg = String(err);
     log(jobId, `ERROR during commit/push/PR: ${msg}`);
