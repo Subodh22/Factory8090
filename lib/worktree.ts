@@ -15,9 +15,41 @@ function resolveRepo(repoPath: string): string {
   return path.resolve(trimmed);
 }
 
+function sleepSync(ms: number): void {
+  // Synchronous sleep without busy-spinning the CPU.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Checks whether the repo directory exists, tolerant of transient Windows
+ * filesystem errors.
+ *
+ * `fs.existsSync` returns false on ANY stat error, not just ENOENT. On Windows,
+ * a stat right after `git worktree remove`/`prune` (or while antivirus/the
+ * indexer is touching freshly written files) can briefly fail with EBUSY /
+ * EPERM / a sharing violation — which would make us wrongly conclude the repo
+ * vanished and FATAL the job. So we only treat ENOENT as "missing" and retry
+ * transient errors a few times before giving the path the benefit of the doubt.
+ */
+function repoExists(dir: string): boolean {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      fs.statSync(dir);
+      return true;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return false; // genuinely missing
+      sleepSync(150 * (attempt + 1)); // transient lock — back off and retry
+    }
+  }
+  // Persistent non-ENOENT error: assume the path is there but momentarily
+  // locked rather than failing the whole job.
+  return true;
+}
+
 export function createWorktree(repoPath: string, jobId: string, baseBranch: string): { worktreePath: string; branch: string } {
   const normalizedRepo = resolveRepo(repoPath);
-  if (!fs.existsSync(normalizedRepo)) {
+  if (!repoExists(normalizedRepo)) {
     throw new Error(`Repo path does not exist: ${normalizedRepo}`);
   }
 
