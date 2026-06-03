@@ -69,7 +69,19 @@ async function tick() {
   }
 }
 
-tick();
+async function rehydrate() {
+  try {
+    const running = await convex.query(api.jobs.listByStatus, { status: "running" });
+    for (const job of running) {
+      console.log(`♻  Requeuing orphaned running job: "${job.title}"`);
+      await convex.mutation(api.jobs.updateStatus, { id: job._id as Id<"jobs">, status: "queued" });
+    }
+  } catch (err) {
+    console.error(`[worker] rehydrate error: ${err}`);
+  }
+}
+
+rehydrate().then(() => tick());
 const interval = setInterval(tick, 200);
 
 process.on("SIGINT", () => {
