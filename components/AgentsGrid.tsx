@@ -179,7 +179,7 @@ export function AgentsGrid({ projectId }: Props) {
           <span className="text-xl">⚡</span>
         </div>
         <p className="text-sm text-zinc-500">No agents running</p>
-        <p className="text-xs text-zinc-700">Queue some jobs and click Run All to start parallel execution</p>
+        <p className="text-xs text-zinc-700">Queue some jobs to start parallel execution</p>
       </div>
     );
   }

@@ -12,8 +12,7 @@ import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory, LogOut, Zap, LayoutGrid, RotateCcw } from "lucide-react";
-import { toast } from "sonner";
+import { Plus, Factory, LogOut, LayoutGrid } from "lucide-react";
 
 function fmtTokens(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -66,8 +65,6 @@ export default function Home() {
   const [selectedJob, setSelectedJob] = useState<Id<"jobs"> | null>(null);
   const [showAddProject, setShowAddProject] = useState(false);
   const [tab, setTab] = useState("board");
-  const [runningAll, setRunningAll] = useState(false);
-  const [redoingAll, setRedoingAll] = useState(false);
 
   const project = activeProject ? (projects.find((p) => p._id === activeProject) ?? null) : null;
   const projectId = project?._id; // undefined when "All" is selected
@@ -79,35 +76,6 @@ export default function Home() {
     projectId ? { projectId } : {}
   ) ?? [];
   const runningCount = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
-  const pendingCount = allJobs.filter((j) => j.status === "pending").length;
-  const redoableCount = allJobs.filter(
-    (j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled"
-  ).length;
-
-  async function handleRunAll(redo = false) {
-    const setBusy = redo ? setRedoingAll : setRunningAll;
-    setBusy(true);
-    try {
-      const body: { projectId?: Id<"projects">; redo?: boolean } = projectId ? { projectId } : {};
-      if (redo) body.redo = true;
-      const res = await fetch("/api/execute/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.started > 0) {
-        toast.success(
-          `${redo ? "Restarted" : "Started"} ${data.started} agent${data.started !== 1 ? "s" : ""} in parallel`
-        );
-        setTab("agents");
-      } else {
-        toast.info(redo ? "No finished jobs to redo" : "No pending jobs to run");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0b] text-zinc-100 overflow-hidden">
@@ -163,29 +131,6 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
-          {pendingCount > 0 && (
-            <button
-              onClick={() => handleRunAll()}
-              disabled={runningAll}
-              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md transition-colors font-medium"
-            >
-              <Zap className="w-3 h-3" />
-              {runningAll ? "Starting…" : `Run All (${pendingCount})`}
-            </button>
-          )}
-
-          {redoableCount > 0 && (
-            <button
-              onClick={() => handleRunAll(true)}
-              disabled={redoingAll}
-              title="Re-run every finished job from scratch"
-              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 rounded-md transition-colors font-medium"
-            >
-              <RotateCcw className="w-3 h-3" />
-              {redoingAll ? "Redoing…" : `Redo All (${redoableCount})`}
-            </button>
-          )}
-
           {runningCount > 0 && (
             <button
               onClick={() => setTab("agents")}
@@ -286,7 +231,7 @@ export default function Home() {
                   onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }}
                 />
                 <p className="text-[10px] text-zinc-700 text-center mt-3">
-                  Queue multiple jobs then hit Run All to launch parallel agents →
+                  Queue jobs to launch parallel agents →
                 </p>
               </div>
             )}
