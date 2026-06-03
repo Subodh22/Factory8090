@@ -3,6 +3,7 @@ import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "
 import { createPR } from "./github";
 import { broadcast } from "./sse-server";
 import { buildRepoMap } from "./repo-map";
+import { parseDataUrl, safeFilename } from "./attachments";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -10,21 +11,27 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-/** Save base64 images to temp files, return message text with image paths prepended. */
-function buildMessageWithImages(text: string, images: string[], worktreePath: string): string {
-  if (!images.length) return text;
-  const paths: string[] = [];
-  for (const dataUrl of images) {
-    const m = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!m) continue;
-    const [, ext, b64] = m;
-    const dest = path.join(worktreePath, `_factory_img_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
-    fs.writeFileSync(dest, Buffer.from(b64, "base64"));
-    paths.push(dest);
+/** Save base64 attachments (images or any other file) to the worktree, return
+ *  message text with their paths prepended so Claude can read them. */
+function buildMessageWithAttachments(text: string, attachments: string[], worktreePath: string): string {
+  if (!attachments.length) return text;
+  const images: string[] = [];
+  const files: string[] = [];
+  for (const dataUrl of attachments) {
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed) continue;
+    const ext = parsed.mime.split("/")[1] || "bin";
+    const name = parsed.name ? safeFilename(parsed.name) : `attachment.${ext}`;
+    const unique = `_factory_${Date.now()}_${Math.random().toString(36).slice(2)}_${name}`;
+    const dest = path.join(worktreePath, unique);
+    fs.writeFileSync(dest, Buffer.from(parsed.base64, "base64"));
+    (parsed.isImage ? images : files).push(dest);
   }
-  if (!paths.length) return text;
-  const refs = paths.map((p, i) => `Image ${i + 1}: ${p}`).join("\n");
-  return `${refs}\n\n${text}`;
+  const refs: string[] = [];
+  images.forEach((p, i) => refs.push(`Image ${i + 1}: ${p}`));
+  files.forEach((p, i) => refs.push(`File ${i + 1}: ${p}`));
+  if (!refs.length) return text;
+  return `${refs.join("\n")}\n\n${text}`;
 }
 
 /** Read CLAUDE.md from the worktree root, or null if it doesn't exist. */
@@ -111,9 +118,9 @@ export async function startJob(jobId: Id<"jobs">) {
       worktreePath = job.worktreePath!;
       const branch = job.branch!;
 
-      // Save any attached images to the worktree so Claude can read them
-      const messageWithImages = buildMessageWithImages(lastUserMsg.text, lastUserMsg.images ?? [], worktreePath);
-      const turn = await existingSession.sendMessage(messageWithImages);
+      // Save any attached files to the worktree so Claude can read them
+      const messageWithAttachments = buildMessageWithAttachments(lastUserMsg.text, lastUserMsg.images ?? [], worktreePath);
+      const turn = await existingSession.sendMessage(messageWithAttachments);
       await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
       const replySessionId = existingSession.getSessionId();
@@ -185,8 +192,8 @@ export async function startJob(jobId: Id<"jobs">) {
 
     const systemContext = `${baseRules}${claudeHint}${resumeNote}${repoMap}\n---\n\n`;
 
-    // Save any images attached at job creation to the worktree so Claude can read them
-    const promptWithImages = buildMessageWithImages(job.prompt, job.images ?? [], worktreePath);
+    // Save any files attached at job creation to the worktree so Claude can read them
+    const promptWithImages = buildMessageWithAttachments(job.prompt, job.images ?? [], worktreePath);
     let turn = await session.sendMessage(systemContext + promptWithImages);
     await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
