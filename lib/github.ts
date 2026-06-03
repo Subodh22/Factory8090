@@ -23,41 +23,6 @@ export async function fetchIssues(token: string, owner: string, repo: string) {
   }));
 }
 
-export async function createPR(
-  token: string,
-  owner: string,
-  repo: string,
-  opts: { title: string; body: string; head: string; base: string; issueNumber?: number }
-) {
-  const octokit = makeOctokit(token);
-  const { data } = await octokit.pulls.create({
-    owner,
-    repo,
-    title: opts.title,
-    body: opts.body + (opts.issueNumber ? `\n\nCloses #${opts.issueNumber}` : ""),
-    head: opts.head,
-    base: opts.base,
-  });
-  return { url: data.html_url, number: data.number };
-}
-
-export async function mergePR(
-  token: string,
-  owner: string,
-  repo: string,
-  prNumber: number,
-  title: string
-) {
-  const octokit = makeOctokit(token);
-  await octokit.pulls.merge({
-    owner,
-    repo,
-    pull_number: prNumber,
-    merge_method: "squash",
-    commit_title: title,
-  });
-}
-
 export async function getRepoInfo(token: string, owner: string, repo: string) {
   const octokit = makeOctokit(token);
   const { data } = await octokit.repos.get({ owner, repo });
