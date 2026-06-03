@@ -88,6 +88,28 @@ export const redo = mutation({
   },
 });
 
+// Add to a backlog (pending) job before it runs: appends extra instructions
+// and/or images to the existing prompt. Only valid while the job is pending.
+export const appendPrompt = mutation({
+  args: {
+    id: v.id("jobs"),
+    text: v.string(),
+    images: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, { id, text, images }) => {
+    const job = await ctx.db.get(id);
+    if (!job) throw new Error("job not found");
+    if (job.status !== "pending") {
+      throw new Error("can only add prompts to backlog jobs");
+    }
+    const extra = text.trim();
+    const updates: Record<string, unknown> = {};
+    if (extra) updates.prompt = `${job.prompt}\n\n${extra}`;
+    if (images?.length) updates.images = [...job.images, ...images];
+    if (Object.keys(updates).length) await ctx.db.patch(id, updates);
+  },
+});
+
 export const updateStatus = mutation({
   args: {
     id: v.id("jobs"),

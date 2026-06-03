@@ -44,6 +44,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const chunks = useQuery(api.jobs.getOutput, { jobId });
   const messages = useQuery(api.jobs.listMessages, { jobId });
   const addMessage = useMutation(api.jobs.addMessage);
+  const appendPrompt = useMutation(api.jobs.appendPrompt);
   const redo = useMutation(api.jobs.redo);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [reply, setReply] = useState("");
@@ -60,6 +61,12 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const redoFileInputRef = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const convexOutput = chunks?.map((c) => c.text).join("") ?? "";
+
+  // Backlog composer state — add extra prompt/images to a pending job before it runs
+  const [extraPrompt, setExtraPrompt] = useState("");
+  const [extraImages, setExtraImages] = useState<string[]>([]);
+  const [addingPrompt, setAddingPrompt] = useState(false);
+  const extraFileInputRef = useRef<HTMLInputElement>(null);
 
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
@@ -109,7 +116,8 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   // Use SSE output while running (fast path), Convex output otherwise (source of truth)
   const output = (isRunning && sseOutput !== null) ? sseOutput : convexOutput;
-  const canChat = job?.status !== "pending";
+  const isPending = job?.status === "pending";
+  const canChat = !isPending;
 
   // Track when output last changed so we can show silence duration
   const lastOutputAt = useRef(Date.now());
@@ -176,6 +184,36 @@ export function JobDetail({ jobId, onRedo }: Props) {
     }
   }
 
+  async function handleExtraImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    const { images, skipped } = await res.json() as { images: string[]; skipped?: string[] };
+    setExtraImages((prev) => [...prev, ...images]);
+    if (skipped?.length) toast.error(`Too large to attach: ${skipped.join(", ")}`);
+    e.target.value = "";
+  }
+
+  async function handleAddPrompt(e: React.FormEvent) {
+    e.preventDefault();
+    if ((!extraPrompt.trim() && !extraImages.length) || addingPrompt) return;
+    setAddingPrompt(true);
+    try {
+      await appendPrompt({
+        id: jobId,
+        text: extraPrompt.trim(),
+        images: extraImages.length ? extraImages : undefined,
+      });
+      setExtraPrompt("");
+      setExtraImages([]);
+      toast.success("Added to prompt");
+    } finally {
+      setAddingPrompt(false);
+    }
+  }
+
   async function handleReply(e: React.FormEvent) {
     e.preventDefault();
     if ((!reply.trim() && !attachedFiles.length) || sending) return;
@@ -207,7 +245,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
           <h2 className="text-sm font-semibold text-zinc-100 leading-snug">{job.title}</h2>
           <StatusBadge status={job.status} />
         </div>
-        <p className="text-xs text-zinc-500 mb-3 line-clamp-2">{job.prompt}</p>
+        <p className={`text-xs text-zinc-500 mb-3 whitespace-pre-wrap ${isPending ? "" : "line-clamp-2"}`}>{job.prompt}</p>
 
         <div className="flex items-center gap-3 text-[10px] text-zinc-600 flex-wrap">
           {job.branch && (
@@ -409,6 +447,55 @@ export function JobDetail({ jobId, onRedo }: Props) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Backlog composer — add to the prompt before the job runs */}
+      {isPending && (
+        <div className="border-t border-[#27272a] bg-[#0d0d0f] p-3 flex-shrink-0">
+          <p className="text-[10px] text-zinc-500 mb-2">
+            In backlog — add more instructions or images before it runs
+          </p>
+          {extraImages.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {extraImages.map((src, i) => (
+                <AttachmentPreview
+                  key={i}
+                  src={src}
+                  size={56}
+                  onRemove={() => setExtraImages((prev) => prev.filter((_, j) => j !== i))}
+                />
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleAddPrompt} className="space-y-2">
+            <textarea
+              value={extraPrompt}
+              onChange={(e) => setExtraPrompt(e.target.value)}
+              placeholder="Add to the prompt…"
+              rows={2}
+              className="w-full bg-[#111113] border border-[#27272a] rounded-md px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-700 resize-none"
+            />
+            <div className="flex items-center gap-2">
+              <input ref={extraFileInputRef} type="file" multiple className="hidden" onChange={handleExtraImagePick} />
+              <button
+                type="button"
+                onClick={() => extraFileInputRef.current?.click()}
+                className="px-2 py-1.5 bg-[#111113] border border-[#27272a] rounded-md text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
+                title="Attach files"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="submit"
+                disabled={(!extraPrompt.trim() && !extraImages.length) || addingPrompt}
+                className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 rounded-md text-xs font-medium text-white flex items-center gap-1 transition-colors"
+              >
+                <Send className="w-3 h-3" />
+                {addingPrompt ? "Adding…" : "Add to prompt"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
