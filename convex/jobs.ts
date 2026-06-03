@@ -56,6 +56,38 @@ export const create = mutation({
   },
 });
 
+// Re-run a finished job: clone it into a fresh queued job, optionally adding
+// extra prompt text and/or images. Leaves the original job (and its history) intact.
+export const redo = mutation({
+  args: {
+    sourceJobId: v.id("jobs"),
+    extraPrompt: v.optional(v.string()),
+    extraImages: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, { sourceJobId, extraPrompt, extraImages }) => {
+    const src = await ctx.db.get(sourceJobId);
+    if (!src) throw new Error("source job not found");
+
+    const extra = extraPrompt?.trim();
+    const prompt = extra ? `${src.prompt}\n\n${extra}` : src.prompt;
+    const images = [...src.images, ...(extraImages ?? [])];
+    const title = src.title.startsWith("Redo: ") ? src.title : `Redo: ${src.title}`;
+
+    return ctx.db.insert("jobs", {
+      projectId: src.projectId,
+      title,
+      prompt,
+      images,
+      status: "queued",
+      priority: src.priority ?? 50,
+      touchedPaths: [],
+      blockedBy: [],
+      createdAt: Date.now(),
+      githubIssueNumber: src.githubIssueNumber,
+    });
+  },
+});
+
 export const updateStatus = mutation({
   args: {
     id: v.id("jobs"),
