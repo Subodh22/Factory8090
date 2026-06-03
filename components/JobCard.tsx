@@ -41,11 +41,9 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
   }
 
   async function handleCancel() {
-    await fetch("/api/execute", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job._id }),
-    });
+    // Setting status to "cancelled" is enough: the local worker polls
+    // jobs.cancelledAmong every tick and stops the running agent. Works from a
+    // remote UI where the worker is on another machine.
     await cancel({ id: job._id });
     toast.info("Job cancelled");
   }

@@ -22,6 +22,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const createJob = useMutation(api.jobs.create);
+  const queueJob = useMutation(api.jobs.updateStatus);
   const project = useQuery(api.projects.get, { id: projectId });
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
@@ -57,12 +58,12 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
       });
       toast.success("Job created");
       if (autoRun) {
-        await fetch("/api/execute", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jobId }),
-        });
-        toast.success("Job started");
+        // Queue it on Convex; the local worker polls and runs it. This works
+        // from a remote UI (e.g. the Vercel deploy) where the worker lives on
+        // a different machine — unlike the old /api/execute route, which tried
+        // to spawn Claude on whatever server served the request.
+        await queueJob({ id: jobId, status: "queued" });
+        toast.success("Queued — local worker will pick it up");
       }
       onJobCreated?.(jobId);
       setPrompt("");
