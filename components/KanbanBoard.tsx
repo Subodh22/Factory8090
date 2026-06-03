@@ -31,7 +31,7 @@ export function KanbanBoard({ projectId, onSelectJob }: Props) {
       {COLUMNS.map((col) => {
         const colJobs = byStatus[col.key] ?? [];
         return (
-          <div key={col.key} className="flex-shrink-0 w-72 flex flex-col">
+          <div key={col.key} className="flex-shrink-0 w-[80vw] sm:w-72 flex flex-col">
             <div className="flex items-center justify-between mb-3 px-1">
               <span className={`text-xs font-semibold tracking-widest uppercase ${col.color}`}>
                 {col.label}

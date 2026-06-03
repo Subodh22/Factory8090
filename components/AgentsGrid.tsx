@@ -193,7 +193,7 @@ export function AgentsGrid({ projectId }: Props) {
           <p className="text-[10px] font-semibold text-zinc-500 tracking-widest uppercase mb-3">
             Active — {activeJobs.length} agent{activeJobs.length !== 1 ? "s" : ""} running
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {activeJobs.map((j) => {
               const p = projectMap[j.projectId];
               return (
@@ -213,7 +213,7 @@ export function AgentsGrid({ projectId }: Props) {
           <p className="text-[10px] font-semibold text-zinc-500 tracking-widest uppercase mb-3">
             Recent
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {recentJobs.map((j) => {
               const p = projectMap[j.projectId];
               return (
