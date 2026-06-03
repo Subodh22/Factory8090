@@ -70,13 +70,13 @@ export default function Home() {
   const pendingCount = allJobs.filter((j) => j.status === "pending").length;
 
   async function handleRunAll() {
-    if (!projectId) return;
     setRunningAll(true);
     try {
+      const body = projectId ? { projectId } : {};
       const res = await fetch("/api/execute/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.started > 0) {
@@ -144,8 +144,7 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Run All — only available when a specific project is selected */}
-          {projectId && pendingCount > 0 && (
+          {pendingCount > 0 && (
             <button
               onClick={handleRunAll}
               disabled={runningAll}

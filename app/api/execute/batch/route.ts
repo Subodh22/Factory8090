@@ -5,10 +5,10 @@ import { api } from "@/convex/_generated/api";
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export async function POST(req: NextRequest) {
-  const { projectId } = await req.json();
-  if (!projectId) return NextResponse.json({ error: "projectId required" }, { status: 400 });
+  const body = await req.json().catch(() => ({}));
+  const { projectId } = body;
 
-  const jobs = await convex.query(api.jobs.list, { projectId });
+  const jobs = await convex.query(api.jobs.list, projectId ? { projectId } : {});
   const pending = jobs.filter((j) => j.status === "pending");
 
   for (const job of pending) {
