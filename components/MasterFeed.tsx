@@ -48,8 +48,10 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
                 onClick={() => onSelectJob(job._id)}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-sm text-zinc-100 font-medium truncate">{job.title}</span>
-                  <StatusBadge status={job.status} />
+                  <span className="text-sm text-zinc-100 font-medium truncate min-w-0 flex-1">{job.title}</span>
+                  <div className="flex-shrink-0">
+                    <StatusBadge status={job.status} />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-zinc-600">
                   {/* Show project tag only when viewing all projects */}
