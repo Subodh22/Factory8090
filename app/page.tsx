@@ -287,7 +287,7 @@ export default function Home() {
 
         {/* Right: Job detail — full-screen overlay on mobile, side column on desktop */}
         {selectedJob && tab !== "agents" && (
-          <div className="fixed inset-0 z-30 bg-[#0a0a0b] lg:static lg:inset-auto lg:z-auto lg:w-96 flex-shrink-0 border-l border-[#27272a] flex flex-col overflow-hidden">
+          <div className="fixed inset-0 h-[100dvh] z-30 bg-[#0a0a0b] lg:static lg:inset-auto lg:h-auto lg:z-auto lg:w-96 flex-shrink-0 border-l border-[#27272a] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#27272a]">
               <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase">
                 Job Detail

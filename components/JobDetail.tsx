@@ -483,7 +483,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
       {/* Chat input */}
       {canChat && (
-        <div className={`border-t p-3 flex-shrink-0 ${
+        <div className={`border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex-shrink-0 ${
           isWaiting
             ? "border-yellow-900/50 bg-yellow-950/10"
             : "border-[#27272a] bg-[#0d0d0f]"
