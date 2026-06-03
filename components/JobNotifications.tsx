@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 
 const HEARTBEAT_MS = 10_000;
@@ -16,15 +17,24 @@ function getClientId(): string {
   return id;
 }
 
+function showToast(title: string, status: "completed" | "failed") {
+  if (status === "completed") toast.success("Job completed", { description: title });
+  else toast.error("Job failed", { description: title });
+}
+
 function showNotification(title: string, status: "completed" | "failed") {
-  if (typeof window === "undefined" || !("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
-  const verb = status === "completed" ? "completed ✓" : "failed ✗";
-  try {
-    new Notification(`Job ${verb}`, { body: title });
-  } catch {
-    /* some browsers throw if called without a user gesture — ignore */
+  // Desktop notification when the user granted permission (visible even when the
+  // tab is backgrounded); otherwise fall back to an in-app toast.
+  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+    const verb = status === "completed" ? "completed ✓" : "failed ✗";
+    try {
+      new Notification(`Job ${verb}`, { body: title });
+      return;
+    } catch {
+      /* some browsers throw without a user gesture — fall through to the toast */
+    }
   }
+  showToast(title, status);
 }
 
 /**
