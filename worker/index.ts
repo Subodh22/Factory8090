@@ -81,8 +81,29 @@ async function rehydrate() {
   }
 }
 
+// Sweep for jobs stuck "running" that this worker isn't actually processing
+// (e.g. a job started via the API route and then the request died).
+async function sweepStuck() {
+  try {
+    const running = await convex.query(api.jobs.listByStatus, { status: "running" });
+    const STUCK_MS = 10 * 60 * 1000; // 10 minutes with no completion = stuck
+    const now = Date.now();
+    for (const job of running) {
+      if (launching.has(job._id)) continue; // actively launching
+      const startedAt = (job as { startedAt?: number }).startedAt ?? 0;
+      if (startedAt && now - startedAt > STUCK_MS) {
+        console.log(`⚠  Stuck job detected (${Math.round((now - startedAt) / 60000)}m): "${job.title}" → requeuing`);
+        await convex.mutation(api.jobs.updateStatus, { id: job._id as Id<"jobs">, status: "queued" });
+      }
+    }
+  } catch (err) {
+    console.error(`[worker] sweepStuck error: ${err}`);
+  }
+}
+
 rehydrate().then(() => tick());
 const interval = setInterval(tick, 200);
+setInterval(sweepStuck, 60_000); // check for stuck jobs every minute
 
 process.on("SIGINT", () => {
   clearInterval(interval);

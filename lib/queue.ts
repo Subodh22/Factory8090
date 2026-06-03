@@ -1,6 +1,6 @@
 ﻿import { createClaudeSession } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "./worktree";
-import { createPR } from "./github";
+import { createPR, mergePR } from "./github";
 import { broadcast } from "./sse-server";
 import { buildRepoMap } from "./repo-map";
 import { ConvexHttpClient } from "convex/browser";
@@ -230,16 +230,17 @@ export async function startJob(jobId: Id<"jobs">) {
 
   } catch (err) {
     processing.delete(jobId);
+    cleanupSession(jobId);
     const msg = String(err);
     console.error(`[startJob] unhandled error for ${jobId}: ${msg}`);
-    try {
-      log(jobId as Id<"jobs">, `FATAL: ${msg}`);
-      await getConvex().mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
-    } catch { /* ignore */ }
+    log(jobId as Id<"jobs">, `FATAL: ${msg}`);
+    // Retry the status update — a transient Convex error here leaves the job stuck as "running"
+    await withRetry(() =>
+      getConvex().mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg })
+    ).catch((e) => console.error(`[startJob] could not mark job failed: ${e}`));
     if (worktreePath && project) {
       try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
     }
-    cleanupSession(jobId);
   }
 }
 
@@ -326,6 +327,13 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
         prUrl = pr.url;
         prNumber = pr.number;
         log(jobId, `PR created: ${prUrl}`);
+
+          try {
+            await mergePR(project.githubToken, owner, repo, pr.number, job?.title ?? branch);
+            log(jobId, "PR merged automatically.");
+          } catch (mergeErr) {
+            log(jobId, `Could not auto-merge (branch protection or conflict): ${mergeErr}`);
+          }
       } catch (prErr) {
         log(jobId, `Note: ${prErr} (PR may already exist)`);
       }

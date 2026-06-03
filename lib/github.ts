@@ -41,6 +41,23 @@ export async function createPR(
   return { url: data.html_url, number: data.number };
 }
 
+export async function mergePR(
+  token: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  title: string
+) {
+  const octokit = makeOctokit(token);
+  await octokit.pulls.merge({
+    owner,
+    repo,
+    pull_number: prNumber,
+    merge_method: "squash",
+    commit_title: title,
+  });
+}
+
 export async function getRepoInfo(token: string, owner: string, repo: string) {
   const octokit = makeOctokit(token);
   const { data } = await octokit.repos.get({ owner, repo });

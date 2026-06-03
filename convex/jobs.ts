@@ -210,14 +210,11 @@ export const requeue = mutation({
   handler: async (ctx, { id }) => {
     const job = await ctx.db.get(id);
     if (!job) return;
-
-    // Clear prior run output so the redo starts with a fresh terminal
     const chunks = await ctx.db
       .query("outputChunks")
       .withIndex("by_job", (q) => q.eq("jobId", id))
       .collect();
     for (const c of chunks) await ctx.db.delete(c._id);
-
     await ctx.db.patch(id, {
       status: "queued",
       output: "",

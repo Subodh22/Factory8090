@@ -7,8 +7,16 @@ function git(args: string[], cwd: string): { status: number | null; stdout: stri
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
+function resolveRepo(repoPath: string): string {
+  const trimmed = repoPath.trim();
+  // Windows absolute path (e.g. C:\...) should never be passed through path.resolve
+  // on a non-Windows host — it would prepend the CWD and produce a garbage path.
+  if (/^[A-Za-z]:[\\/]/.test(trimmed)) return trimmed.replace(/\//g, path.sep);
+  return path.resolve(trimmed);
+}
+
 export function createWorktree(repoPath: string, jobId: string, baseBranch: string): { worktreePath: string; branch: string } {
-  const normalizedRepo = path.resolve(repoPath.trim());
+  const normalizedRepo = resolveRepo(repoPath);
   if (!fs.existsSync(normalizedRepo)) {
     throw new Error(`Repo path does not exist: ${normalizedRepo}`);
   }
