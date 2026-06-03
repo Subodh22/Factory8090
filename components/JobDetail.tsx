@@ -6,6 +6,7 @@ import { StatusBadge } from "./StatusBadge";
 import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AttachmentPreview } from "./AttachmentPreview";
 
 interface Props {
   jobId: Id<"jobs">;
