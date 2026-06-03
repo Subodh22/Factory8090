@@ -1,4 +1,4 @@
-﻿import { createClaudeSession } from "./claude-runner";
+﻿import { createClaudeSession, type TurnResult } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "./worktree";
 import { createPR } from "./github";
 import { broadcast } from "./sse-server";
@@ -72,6 +72,64 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): 
   throw new Error("unreachable");
 }
 
+interface DeliverArgs {
+  jobId: Id<"jobs">;
+  session: ReturnType<typeof createClaudeSession>;
+  worktreePath: string;
+  convex: ConvexHttpClient;
+  projectId: Id<"projects">;
+  baselineTs: number;
+}
+
+/**
+ * Delivers every user message queued after `baselineTs` as Claude turns.
+ *
+ * Re-queries Convex after each turn, so a message typed while Claude was busy
+ * mid-turn is picked up on the next pass instead of being dropped. Multiple
+ * pending messages are combined into a single turn. Returns the last turn (with
+ * consumed=true) if anything was delivered, otherwise consumed=false.
+ */
+async function deliverPendingTurns(
+  { jobId, session, worktreePath, convex, projectId, baselineTs }: DeliverArgs
+): Promise<{ turn: TurnResult; consumed: boolean }> {
+  let lastTurn: TurnResult | null = null;
+  let baseline = baselineTs;
+
+  while (true) {
+    let messages;
+    try {
+      messages = await withRetry(() => convex.query(api.jobs.listMessages, { jobId }));
+    } catch { break; }
+
+    const pending = messages.filter((m) => m.role === "user" && m.ts > baseline);
+    if (!pending.length) break;
+    baseline = pending[pending.length - 1].ts;
+
+    const text = pending.map((m) => m.text).filter(Boolean).join("\n\n");
+    const images = pending.flatMap((m) => m.images ?? []);
+    if (!text.trim() && !images.length) continue;
+
+    log(jobId, `User: "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"`);
+    log(jobId, "-".repeat(40));
+
+    const withImages = buildMessageWithImages(text, images, worktreePath);
+    lastTurn = await session.sendMessage(withImages);
+    await convex.mutation(api.jobs.updateUsage, {
+      id: jobId,
+      inputTokens: lastTurn.inputTokens,
+      outputTokens: lastTurn.outputTokens,
+      costUsd: lastTurn.costUsd,
+    });
+
+    const sid = session.getSessionId();
+    if (sid) projectSessions.set(projectId, { sessionId: sid, inputTokens: lastTurn.inputTokens });
+  }
+
+  return lastTurn
+    ? { turn: lastTurn, consumed: true }
+    : { turn: null as unknown as TurnResult, consumed: false };
+}
+
 export async function startJob(jobId: Id<"jobs">) {
   if (processing.has(jobId)) return;
   processing.add(jobId);
@@ -91,37 +149,27 @@ export async function startJob(jobId: Id<"jobs">) {
     // -- Existing session: user replied to a waiting job ---------------------
     const existingSession = activeSessions.get(jobId);
     if (existingSession) {
-      // Get the latest user message to send
-      let messages: { role: "assistant" | "user"; text: string; images?: string[]; _id: string }[] = [];
-      try {
-        messages = await withRetry(() => convex.query(api.jobs.listMessages, { jobId }));
-      } catch { /* continue with empty */ }
-
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-      if (!lastUserMsg) { processing.delete(jobId); return; }
-
-      log(jobId, `User replied: "${lastUserMsg.text}"`);
-      log(jobId, "-".repeat(40));
+      worktreePath = job.worktreePath!;
+      const branch = job.branch!;
 
       existingSession.onChunk((text) => {
         broadcast(jobId, text);
         convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
       });
 
-      worktreePath = job.worktreePath!;
-      const branch = job.branch!;
+      // Deliver every user message queued since the job last paused — combines
+      // multiple queued messages and re-checks for ones typed mid-turn.
+      const drained = await deliverPendingTurns({
+        jobId,
+        session: existingSession,
+        worktreePath,
+        convex,
+        projectId: job.projectId,
+        baselineTs: job.completedAt ?? 0,
+      });
+      if (!drained.consumed) { processing.delete(jobId); return; }
 
-      // Save any attached images to the worktree so Claude can read them
-      const messageWithImages = buildMessageWithImages(lastUserMsg.text, lastUserMsg.images ?? [], worktreePath);
-      const turn = await existingSession.sendMessage(messageWithImages);
-      await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
-
-      const replySessionId = existingSession.getSessionId();
-      if (replySessionId) {
-        projectSessions.set(job.projectId, { sessionId: replySessionId, inputTokens: turn.inputTokens });
-      }
-
-      await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+      await handleTurnResult({ jobId, turn: drained.turn, worktreePath, branch, project: project!, convex, keepSession: true });
       processing.delete(jobId);
       return;
     }
@@ -187,6 +235,8 @@ export async function startJob(jobId: Id<"jobs">) {
 
     // Save any images attached at job creation to the worktree so Claude can read them
     const promptWithImages = buildMessageWithImages(job.prompt, job.images ?? [], worktreePath);
+    // Messages typed after this point (while the first turn runs) are delivered as follow-up turns
+    const firstTurnStartedAt = Date.now();
     let turn = await session.sendMessage(systemContext + promptWithImages);
     await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
@@ -225,7 +275,23 @@ export async function startJob(jobId: Id<"jobs">) {
       }
     }
 
-    await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+    // Drain any messages the user queued while the first turn was running, so
+    // mid-job context is applied before we commit/PR/complete.
+    const liveSession = activeSessions.get(jobId);
+    let finalTurn = turn;
+    if (liveSession) {
+      const drained = await deliverPendingTurns({
+        jobId,
+        session: liveSession,
+        worktreePath,
+        convex,
+        projectId: job.projectId,
+        baselineTs: firstTurnStartedAt,
+      });
+      if (drained.consumed) finalTurn = drained.turn;
+    }
+
+    await handleTurnResult({ jobId, turn: finalTurn, worktreePath, branch, project: project!, convex, keepSession: true });
     processing.delete(jobId);
 
   } catch (err) {
