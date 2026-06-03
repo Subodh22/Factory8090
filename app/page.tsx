@@ -9,6 +9,7 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
+import { PRsPanel } from "@/components/PRsPanel";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -83,6 +84,7 @@ export default function Home() {
   const redoableCount = allJobs.filter(
     (j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled"
   ).length;
+  const prCount = allJobs.filter((j) => j.prUrl).length;
 
   async function handleRunAll(redo = false) {
     const setBusy = redo ? setRedoingAll : setRunningAll;
@@ -249,7 +251,7 @@ export default function Home() {
           <div className="px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-4">
-                {["board", "agents", "chat"].map((t) => (
+                {["board", "agents", "prs", "chat"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
@@ -261,6 +263,15 @@ export default function Home() {
                          Agents
                          {runningCount > 0 && (
                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                         )}
+                       </span>
+                     ) : t === "prs" ? (
+                       <span className="flex items-center gap-1.5">
+                         PRs
+                         {prCount > 0 && (
+                           <span className="text-[9px] text-zinc-500 leading-none px-1 py-0.5 bg-zinc-900 rounded">
+                             {prCount}
+                           </span>
                          )}
                        </span>
                      ) : "New Job"}
@@ -277,6 +288,10 @@ export default function Home() {
 
             {tab === "agents" && (
               <AgentsGrid projectId={projectId} />
+            )}
+
+            {tab === "prs" && (
+              <PRsPanel projectId={projectId} onSelectJob={setSelectedJob} />
             )}
 
             {tab === "chat" && projectId && (
