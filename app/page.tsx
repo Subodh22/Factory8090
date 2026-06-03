@@ -312,7 +312,7 @@ export default function Home() {
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
-              <JobDetail jobId={selectedJob} />
+              <JobDetail jobId={selectedJob} onRedo={(id) => { setSelectedJob(id); setTab("board"); }} />
             </div>
           </div>
         )}
