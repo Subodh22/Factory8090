@@ -45,14 +45,20 @@ export function JobDetail({ jobId }: Props) {
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [sseOutput, setSseOutput] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const convexOutput = chunks?.map((c) => c.text).join("") ?? "";
 
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
 
-  // While running, stream output directly from the worker via SSE (bypasses
-  // the Convex cloud round-trip). Seed with whatever Convex has already stored
-  // so we don't miss output from before the connection was established.
+  // Live clock — ticks every second while running so elapsed time updates
+  useEffect(() => {
+    if (!isRunning) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [isRunning]);
+
+  // SSE streaming while running
   const convexOutputRef = useRef(convexOutput);
   convexOutputRef.current = convexOutput;
 
@@ -76,7 +82,7 @@ export function JobDetail({ jobId }: Props) {
     };
 
     es.onerror = () => {
-      setSseOutput(null); // fall back to Convex output
+      setSseOutput(null);
       es.close();
     };
 
@@ -90,13 +96,22 @@ export function JobDetail({ jobId }: Props) {
   const output = (isRunning && sseOutput !== null) ? sseOutput : convexOutput;
   const canChat = job?.status !== "pending";
 
+  // Track when output last changed so we can show silence duration
+  const lastOutputAt = useRef(Date.now());
+  const prevOutputLen = useRef(0);
+  if (output.length !== prevOutputLen.current) {
+    lastOutputAt.current = Date.now();
+    prevOutputLen.current = output.length;
+  }
+
+  // Seconds since last output chunk arrived (0 when not running)
+  const silentSecs = isRunning ? Math.floor((now - lastOutputAt.current) / 1000) : 0;
+
   // Derive the last active tool for the live status pill
   const lines = output.split("\n").filter(Boolean);
   const lastToolLine = [...lines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
   const activeTool = isRunning && lastToolLine
-    ? lastToolLine.startsWith("\x00bash\x00")
-      ? lastToolLine.slice(7)
-      : lastToolLine.slice(7)
+    ? lastToolLine.slice(7)
     : null;
 
   useEffect(() => {
@@ -115,11 +130,15 @@ export function JobDetail({ jobId }: Props) {
     }
   }
 
-  if (!job) return <div className="p-6 text-zinc-600 text-sm">Loading…</div>;
+  if (!job) return <div className="p-6 text-zinc-600 text-sm">Loading...</div>;
 
+  // Live elapsed: counts up while running, freezes when done
   const elapsed = job.startedAt
-    ? Math.round(((job.completedAt ?? Date.now()) - job.startedAt) / 1000)
+    ? Math.round(((isRunning ? now : (job.completedAt ?? now)) - job.startedAt) / 1000)
     : null;
+
+  const isThinking = isRunning && silentSecs >= 8;
+  const isStuck = isRunning && silentSecs >= 30;
 
   return (
     <div className="flex flex-col h-full">
@@ -139,7 +158,7 @@ export function JobDetail({ jobId }: Props) {
             </span>
           )}
           {elapsed !== null && (
-            <span className="flex items-center gap-1">
+            <span className={`flex items-center gap-1 ${isRunning ? "text-zinc-400" : ""}`}>
               <Clock className="w-2.5 h-2.5" />
               {elapsed}s
             </span>
@@ -162,16 +181,36 @@ export function JobDetail({ jobId }: Props) {
 
       {/* Terminal output */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        {/* Indeterminate activity bar — scrolls while running */}
+        {isRunning && (
+          <div className="h-0.5 w-full bg-zinc-900 flex-shrink-0 overflow-hidden relative">
+            <style>{`@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}`}</style>
+            <div
+              className={`absolute h-full w-1/3 ${isStuck ? "bg-red-500" : isThinking ? "bg-amber-500" : "bg-indigo-500"}`}
+              style={{ animation: "slide 2s linear infinite" }}
+            />
+          </div>
+        )}
         <div className="px-4 py-2 border-b border-[#27272a] flex items-center gap-2 flex-shrink-0 bg-[#0d0d0f]">
           <div className="flex gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
+            <div className={`w-2.5 h-2.5 rounded-full ${isRunning ? (isStuck ? "bg-red-500 animate-pulse" : "bg-green-500 animate-pulse") : "bg-zinc-700"}`} />
             <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
             <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
           </div>
           <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase flex-1 text-center">
             Agent Output
           </span>
-          {isRunning && activeTool ? (
+          {isRunning && isStuck ? (
+            <span className="flex items-center gap-1.5 text-[10px] text-red-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse flex-shrink-0" />
+              no output {silentSecs}s
+            </span>
+          ) : isRunning && isThinking ? (
+            <span className="flex items-center gap-1.5 text-[10px] text-amber-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+              thinking...
+            </span>
+          ) : isRunning && activeTool ? (
             <span className="flex items-center gap-1.5 text-[10px] text-cyan-400 max-w-[160px] truncate">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse flex-shrink-0" />
               {activeTool}

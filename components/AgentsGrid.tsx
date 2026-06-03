@@ -4,7 +4,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
 import { GitBranch, Clock, ExternalLink } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "text";
 
@@ -75,15 +75,29 @@ interface AgentCardProps {
 
 function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
   const job = useQuery(api.jobs.get, { id: jobId });
+  const [now, setNow] = useState(() => Date.now());
+  const isRunning = job?.status === "running";
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [isRunning]);
+
   if (!job) return null;
 
-  const isRunning = job.status === "running";
   const elapsed = job.startedAt
-    ? Math.round(((job.completedAt ?? Date.now()) - job.startedAt) / 1000)
+    ? Math.round(((isRunning ? now : (job.completedAt ?? now)) - job.startedAt) / 1000)
     : null;
 
   return (
     <div className="flex flex-col bg-[#0d0d0f] border border-[#27272a] rounded-lg overflow-hidden" style={{ height: 320 }}>
+      {isRunning && (
+        <div className="h-0.5 w-full bg-zinc-900 overflow-hidden relative flex-shrink-0">
+          <style>{`@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}`}</style>
+          <div className="absolute h-full w-1/3 bg-indigo-500" style={{ animation: "slide 2s linear infinite" }} />
+        </div>
+      )}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#27272a] flex-shrink-0">
         <div className="flex gap-1.5">
           <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-green-500 animate-pulse" : job.status === "completed" ? "bg-green-700" : "bg-red-700"}`} />
