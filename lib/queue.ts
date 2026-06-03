@@ -2,6 +2,7 @@
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "./worktree";
 import { createPR } from "./github";
 import { broadcast } from "./sse-server";
+import { buildRepoMap } from "./repo-map";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -138,8 +139,9 @@ export async function startJob(jobId: Id<"jobs">) {
     const claudeHint = hasClaude
       ? "Read CLAUDE.md before starting.\n\n"
       : "No CLAUDE.md found — create one first, then do the task.\n\n";
+    const repoMap = buildRepoMap(worktreePath);
 
-    const systemContext = `${baseRules}${claudeHint}---\n\n`;
+    const systemContext = `${baseRules}${claudeHint}${repoMap}\n---\n\n`;
 
     const turn = await session.sendMessage(systemContext + job.prompt);
     await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
