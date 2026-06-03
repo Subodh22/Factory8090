@@ -9,15 +9,21 @@ interface NotifyOpts {
   projectName?: string;
   error?: string;
   changedFiles?: string[];
+  /** When true, a browser tab is open and will show an in-app popup, so the
+   *  email is skipped. */
+  browserOnline?: boolean;
 }
 
 /**
  * Email the user when a job reaches a terminal state, via the Resend REST API.
  *
- * Opt-in: a no-op unless both RESEND_API_KEY and NOTIFY_EMAIL are set. Never
- * throws — a notification failure must not break the job flow.
+ * Opt-in: a no-op unless both RESEND_API_KEY and NOTIFY_EMAIL are set. Skipped
+ * when a browser is open (the UI shows a popup instead). Never throws — a
+ * notification failure must not break the job flow.
  */
 export async function sendJobNotification(opts: NotifyOpts): Promise<void> {
+  if (opts.browserOnline) return;
+
   const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.NOTIFY_EMAIL;
   if (!apiKey || !to) return;

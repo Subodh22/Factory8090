@@ -72,6 +72,16 @@ function log(jobId: Id<"jobs">, msg: string) {
   getConvex().mutation(api.jobs.appendOutput, { jobId, text: line }).catch(() => {});
 }
 
+/** Was a browser tab open within the last 30s? If so, the UI shows a popup and
+ *  we skip the email. On any error, assume offline so the email still goes out. */
+async function browserIsOpen(convex: ConvexHttpClient): Promise<boolean> {
+  try {
+    return await convex.query(api.presence.anyOnline, { since: Date.now() - 30_000 });
+  } catch {
+    return false;
+  }
+}
+
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
   for (let i = 0; i < retries; i++) {
     try {
@@ -257,7 +267,7 @@ export async function startJob(jobId: Id<"jobs">) {
     await withRetry(() =>
       getConvex().mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg })
     ).catch((e) => console.error(`[startJob] could not mark job failed: ${e}`));
-    await sendJobNotification({ jobId, title: jobTitle, status: "failed", projectName: project?.name, error: msg });
+    await sendJobNotification({ jobId, title: jobTitle, status: "failed", projectName: project?.name, error: msg, browserOnline: await browserIsOpen(getConvex()) });
     if (worktreePath && project) {
       try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
     }
@@ -338,7 +348,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
       convex.mutation(api.jobs.updateStatus, { id: jobId, status: "completed" })
     );
     log(jobId, "Job completed successfully.");
-    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name });
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, browserOnline: await browserIsOpen(convex) });
     removeWorktree(project.localPath, worktreePath);
     log(jobId, "Worktree cleaned up.");
     return;
@@ -361,12 +371,12 @@ Automated by Factory`, project.defaultBranch);
       })
     );
     log(jobId, "Job completed successfully.");
-    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles });
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles, browserOnline: await browserIsOpen(convex) });
   } catch (err) {
     const msg = String(err);
     log(jobId, `ERROR during commit/push: ${msg}`);
     await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
-    await sendJobNotification({ jobId, title, status: "failed", projectName: project.name, error: msg });
+    await sendJobNotification({ jobId, title, status: "failed", projectName: project.name, error: msg, browserOnline: await browserIsOpen(convex) });
   } finally {
     removeWorktree(project.localPath, worktreePath);
     log(jobId, "Worktree cleaned up.");

@@ -57,7 +57,7 @@ Browser UI → Convex (cloud DB) ← worker/index.ts polls every 2s
 | `lib/queue.ts` | Core job lifecycle: worktree creation, Claude session management, commit/PR on completion |
 | `lib/claude-runner.ts` | Spawns `claude` CLI per turn; parses `stream-json` events; emits typed chunk prefixes |
 | `lib/worktree.ts` | Git worktree CRUD: creates `job/<jobId>` branch at `<repo>/.worktrees/<jobId>/` |
-| `convex/schema.ts` | DB schema — `projects`, `jobs`, `outputChunks`, `jobMessages`, `githubIssues` |
+| `convex/schema.ts` | DB schema — `projects`, `jobs`, `outputChunks`, `jobMessages`, `githubIssues`, `presence` |
 | `convex/jobs.ts` | All Convex queries/mutations for job management |
 | `app/page.tsx` | Single-page app shell: project switcher, tab router (Board/Agents/New Job), job detail panel |
 | `components/JobDetail.tsx` | Right-panel: live terminal output + chat thread for `waiting_for_input` jobs |
@@ -126,7 +126,9 @@ NEXTAUTH_SECRET=          # any random string
 NEXTAUTH_URL=             # http://localhost:3001 in dev
 
 # Email notifications (optional) — sent by the worker when a job completes/fails.
-# Both RESEND_API_KEY and NOTIFY_EMAIL must be set or notifications are skipped.
+# The UI shows a desktop popup when a browser tab is open (tracked via the
+# `presence` heartbeat); email is sent only when no browser is watching.
+# Both RESEND_API_KEY and NOTIFY_EMAIL must be set or the email is skipped.
 RESEND_API_KEY=           # Resend API key (https://resend.com)
 NOTIFY_EMAIL=             # recipient address for job completion/failure emails
 RESEND_FROM=              # optional "from" address; defaults to onboarding@resend.dev
