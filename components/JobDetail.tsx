@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X, RotateCcw } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X, RotateCcw, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -44,11 +44,14 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const chunks = useQuery(api.jobs.getOutput, { jobId });
   const messages = useQuery(api.jobs.listMessages, { jobId });
   const addMessage = useMutation(api.jobs.addMessage);
+  const appendPrompt = useMutation(api.jobs.appendPrompt);
   const redo = useMutation(api.jobs.redo);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
+  const [promptDraft, setPromptDraft] = useState("");
+  const [addingPrompt, setAddingPrompt] = useState(false);
   const [sseOutput, setSseOutput] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,6 +66,8 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
+  // Backlog job not yet started — user can still edit/grow the prompt
+  const isPending = job?.status === "pending" || job?.status === "queued";
   // "Done" jobs that can be re-run from scratch
   const isFinished = job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
 
@@ -176,6 +181,24 @@ export function JobDetail({ jobId, onRedo }: Props) {
     }
   }
 
+  async function handleAddPrompt(e: React.FormEvent) {
+    e.preventDefault();
+    if ((!promptDraft.trim() && !attachedFiles.length) || addingPrompt) return;
+    setAddingPrompt(true);
+    try {
+      await appendPrompt({
+        id: jobId,
+        text: promptDraft.trim(),
+        images: attachedFiles.length ? attachedFiles : undefined,
+      });
+      setPromptDraft("");
+      setAttachedFiles([]);
+      toast.success("Added to prompt");
+    } finally {
+      setAddingPrompt(false);
+    }
+  }
+
   async function handleReply(e: React.FormEvent) {
     e.preventDefault();
     if ((!reply.trim() && !attachedFiles.length) || sending) return;
@@ -207,7 +230,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
           <h2 className="text-sm font-semibold text-zinc-100 leading-snug">{job.title}</h2>
           <StatusBadge status={job.status} />
         </div>
-        <p className="text-xs text-zinc-500 mb-3 line-clamp-2">{job.prompt}</p>
+        <p className={`text-xs text-zinc-500 mb-3 whitespace-pre-wrap ${isPending ? "" : "line-clamp-2"}`}>{job.prompt}</p>
 
         <div className="flex items-center gap-3 text-[10px] text-zinc-600 flex-wrap">
           {job.branch && (
@@ -409,6 +432,52 @@ export function JobDetail({ jobId, onRedo }: Props) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Add-to-prompt — backlog jobs can grow their prompt before they run */}
+      {isPending && (
+        <div className="border-t border-[#27272a] bg-[#0d0d0f] p-3 flex-shrink-0">
+          <p className="text-[10px] text-zinc-500 mb-2">
+            Add instructions or images before this job runs
+          </p>
+          {attachedFiles.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {attachedFiles.map((src, i) => (
+                <AttachmentPreview
+                  key={i}
+                  src={src}
+                  size={56}
+                  onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))}
+                />
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleAddPrompt} className="flex gap-2">
+            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFilePick} />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-2 py-2 bg-[#111113] border border-[#27272a] rounded-md text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors flex-shrink-0"
+              title="Attach files"
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
+            <input
+              value={promptDraft}
+              onChange={(e) => setPromptDraft(e.target.value)}
+              placeholder="Add to prompt..."
+              className="flex-1 bg-[#111113] border border-[#27272a] rounded-md px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-700 transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={(!promptDraft.trim() && !attachedFiles.length) || addingPrompt}
+              className="px-3 py-2 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 rounded-md text-xs font-medium text-white flex items-center gap-1 transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              {addingPrompt ? "..." : "Add"}
+            </button>
+          </form>
         </div>
       )}
 
