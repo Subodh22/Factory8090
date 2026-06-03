@@ -230,6 +230,12 @@ interface TurnResultArgs {
   keepSession: boolean;
 }
 
+function responseHasQuestion(text: string): boolean {
+  const lines = text.trim().split(String.fromCharCode(10)).filter((l) => l.trim());
+  if (!lines.length) return false;
+  return lines[lines.length - 1].trim().endsWith("?");
+}
+
 async function handleTurnResult({ jobId, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
   log(jobId, "-".repeat(40));
 
@@ -239,14 +245,29 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
   const claudeResponse = turn.assistantText.trim() || turn.resultText.trim();
 
   if (changedFiles.length === 0) {
-    // Claude is asking a question or needs more info â€" save message, wait for reply
-    log(jobId, "â³ Waiting for your replyâ€¦");
+    if (responseHasQuestion(claudeResponse)) {
+      // Claude is asking a question — save message, wait for reply
+      log(jobId, "Waiting for your reply...");
+      if (claudeResponse) {
+        await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: claudeResponse });
+      }
+      await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "waiting_for_input" });
+      log(jobId, "Reply in the chat panel to continue.");
+      // Session stays alive in activeSessions — process is NOT killed
+      return;
+    }
+
+    // Claude finished without file changes (informational task, explanation, etc.)
+    cleanupSession(jobId);
     if (claudeResponse) {
       await convex.mutation(api.jobs.addMessage, { jobId, role: "assistant", text: claudeResponse });
     }
-    await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "waiting_for_input" });
-    log(jobId, "Reply in the chat panel to continue.");
-    // Session stays alive in activeSessions â€" process is NOT killed
+    await withRetry(() =>
+      convex.mutation(api.jobs.updateStatus, { id: jobId, status: "completed" })
+    );
+    log(jobId, "Job completed successfully.");
+    removeWorktree(project.localPath, worktreePath);
+    log(jobId, "Worktree cleaned up.");
     return;
   }
 
