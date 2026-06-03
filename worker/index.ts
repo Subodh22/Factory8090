@@ -55,12 +55,17 @@ async function tick() {
     const queued = await convex.query(api.jobs.listByStatus, { status: "queued" });
     for (const job of queued) launch(job, "Starting");
 
-    // Deliver user replies to waiting jobs
-    const waiting = await convex.query(api.jobs.listByStatus, { status: "waiting_for_input" });
-    for (const job of waiting) {
-      if (!job.lastUserMessageAt) continue;
-      const completedAt = job.completedAt ?? 0;
-      if (job.lastUserMessageAt > completedAt) {
+    // Deliver user replies to jobs awaiting input OR already finished. Chatting
+    // with a "done" job continues the conversation by resuming its saved session.
+    for (const status of ["waiting_for_input", "completed", "failed"] as const) {
+      const jobs = await convex.query(api.jobs.listByStatus, { status });
+      for (const job of jobs) {
+        if (!job.lastUserMessageAt) continue;
+        const completedAt = job.completedAt ?? 0;
+        if (job.lastUserMessageAt <= completedAt) continue;
+        // Finished jobs can only be resumed if we captured a session id; waiting
+        // jobs always have a live session, so they're fine without one.
+        if (status !== "waiting_for_input" && !job.sessionId) continue;
         launch(job, "User replied");
       }
     }
