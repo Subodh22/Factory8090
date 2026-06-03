@@ -124,4 +124,10 @@ GITHUB_ID=                # GitHub OAuth App client ID (for sign-in)
 GITHUB_SECRET=            # GitHub OAuth App client secret
 NEXTAUTH_SECRET=          # any random string
 NEXTAUTH_URL=             # http://localhost:3001 in dev
+
+# Email notifications (optional) — sent by the worker when a job completes/fails.
+# Both RESEND_API_KEY and NOTIFY_EMAIL must be set or notifications are skipped.
+RESEND_API_KEY=           # Resend API key (https://resend.com)
+NOTIFY_EMAIL=             # recipient address for job completion/failure emails
+RESEND_FROM=              # optional "from" address; defaults to onboarding@resend.dev
 ```

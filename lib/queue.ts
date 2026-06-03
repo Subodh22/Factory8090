@@ -2,6 +2,7 @@
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect } from "./worktree";
 
 import { broadcast } from "./sse-server";
+import { sendJobNotification } from "./notify";
 import { buildRepoMap } from "./repo-map";
 import { parseDataUrl, safeFilename } from "./attachments";
 import { ConvexHttpClient } from "convex/browser";
@@ -89,11 +90,13 @@ export async function startJob(jobId: Id<"jobs">) {
 
   const convex = getConvex();
   let worktreePath: string | undefined;
+  let jobTitle: string | undefined;
   let project: Awaited<ReturnType<typeof convex.query<typeof api.projects.get>>> | null = null;
 
   try {
     const job = await withRetry(() => convex.query(api.jobs.get, { id: jobId }));
     if (!job) { processing.delete(jobId); return; }
+    jobTitle = job.title;
     project = await withRetry(() => convex.query(api.projects.get, { id: job.projectId }));
     if (!project) { processing.delete(jobId); return; }
 
@@ -133,7 +136,7 @@ export async function startJob(jobId: Id<"jobs">) {
       }
 
       if (reapIfCancelled(jobId, worktreePath, project)) return;
-      await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+      await handleTurnResult({ jobId, title: job.title, turn, worktreePath, branch, project: project!, convex, keepSession: true });
       processing.delete(jobId);
       return;
     }
@@ -238,7 +241,7 @@ export async function startJob(jobId: Id<"jobs">) {
     }
 
     if (reapIfCancelled(jobId, worktreePath, project)) return;
-    await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+    await handleTurnResult({ jobId, title: job.title, turn, worktreePath, branch, project: project!, convex, keepSession: true });
     processing.delete(jobId);
 
   } catch (err) {
@@ -254,6 +257,7 @@ export async function startJob(jobId: Id<"jobs">) {
     await withRetry(() =>
       getConvex().mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg })
     ).catch((e) => console.error(`[startJob] could not mark job failed: ${e}`));
+    await sendJobNotification({ jobId, title: jobTitle, status: "failed", projectName: project?.name, error: msg });
     if (worktreePath && project) {
       try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
     }
@@ -289,10 +293,11 @@ function reapIfCancelled(
 
 interface TurnResultArgs {
   jobId: Id<"jobs">;
+  title?: string;
   turn: { assistantText: string; resultText: string };
   worktreePath: string;
   branch: string;
-  project: { localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
+  project: { name?: string; localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
   convex: ConvexHttpClient;
   keepSession: boolean;
 }
@@ -303,7 +308,7 @@ function responseHasQuestion(text: string): boolean {
   return lines[lines.length - 1].trim().endsWith("?");
 }
 
-async function handleTurnResult({ jobId, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
+async function handleTurnResult({ jobId, title, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
   log(jobId, "-".repeat(40));
 
   const changedFiles = getChangedFiles(worktreePath);
@@ -333,6 +338,7 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
       convex.mutation(api.jobs.updateStatus, { id: jobId, status: "completed" })
     );
     log(jobId, "Job completed successfully.");
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name });
     removeWorktree(project.localPath, worktreePath);
     log(jobId, "Worktree cleaned up.");
     return;
@@ -355,10 +361,12 @@ Automated by Factory`, project.defaultBranch);
       })
     );
     log(jobId, "Job completed successfully.");
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles });
   } catch (err) {
     const msg = String(err);
     log(jobId, `ERROR during commit/push: ${msg}`);
     await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
+    await sendJobNotification({ jobId, title, status: "failed", projectName: project.name, error: msg });
   } finally {
     removeWorktree(project.localPath, worktreePath);
     log(jobId, "Worktree cleaned up.");
