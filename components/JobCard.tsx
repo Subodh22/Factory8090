@@ -118,22 +118,22 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
             )}
             {job.status === "pending" && (
               <button
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white transition-colors"
                 onClick={(e) => { e.stopPropagation(); handleRun(); }}>
                 <Play className="w-2.5 h-2.5" /> Run
               </button>
             )}
             {(job.status === "cancelled" || job.status === "failed") && (
               <button
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-zinc-700 hover:bg-zinc-600 text-white transition-colors opacity-0 group-hover:opacity-100"
+                className="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-white transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                 onClick={openRedo}>
                 <RotateCcw className="w-2.5 h-2.5" /> Redo
               </button>
             )}
             {(job.status === "pending" || job.status === "running" || job.status === "queued") && (
-              <button className="p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+              <button className="p-1.5 text-zinc-600 hover:text-red-400 active:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                 onClick={(e) => { e.stopPropagation(); handleCancel(); }}>
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
