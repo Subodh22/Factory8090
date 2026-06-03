@@ -328,11 +328,20 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
         prNumber = pr.number;
         log(jobId, `PR created: ${prUrl}`);
 
+          // Wait for GitHub to compute mergeability before attempting merge
+          await new Promise((r) => setTimeout(r, 3000));
           try {
             await mergePR(project.githubToken, owner, repo, pr.number, job?.title ?? branch);
             log(jobId, "PR merged automatically.");
           } catch (mergeErr) {
-            log(jobId, `Could not auto-merge (branch protection or conflict): ${mergeErr}`);
+            // Retry once — GitHub sometimes needs more time
+            try {
+              await new Promise((r) => setTimeout(r, 5000));
+              await mergePR(project.githubToken, owner, repo, pr.number, job?.title ?? branch);
+              log(jobId, "PR merged automatically (retry).");
+            } catch (retryErr) {
+              log(jobId, `Auto-merge failed — check branch protection rules: ${retryErr}`);
+            }
           }
       } catch (prErr) {
         log(jobId, `Note: ${prErr} (PR may already exist)`);
