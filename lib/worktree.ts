@@ -100,15 +100,6 @@ export function getChangedFiles(worktreePath: string): string[] {
   }
 }
 
-export function commitAndPush(worktreePath: string, message: string) {
-  git(["add", "-A"], worktreePath);
-  const commit = git(["commit", "-m", message], worktreePath);
-  if (commit.status !== 0 && !commit.stdout.includes("nothing to commit")) {
-    throw new Error(`git commit failed: ${commit.stderr}`);
-  }
-  git(["push", "origin", "HEAD"], worktreePath);
-}
-
 /**
  * Commit all changes on the current worktree branch, then push them directly
  * to the repo's default branch — no PR needed.
