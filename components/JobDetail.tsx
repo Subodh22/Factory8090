@@ -3,8 +3,9 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X, Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 interface Props {
   jobId: Id<"jobs">;
@@ -41,9 +42,13 @@ export function JobDetail({ jobId }: Props) {
   const chunks = useQuery(api.jobs.getOutput, { jobId });
   const messages = useQuery(api.jobs.listMessages, { jobId });
   const addMessage = useMutation(api.jobs.addMessage);
+  const updatePrompt = useMutation(api.jobs.updatePrompt);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [promptDraft, setPromptDraft] = useState("");
+  const [promptDirty, setPromptDirty] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [sseOutput, setSseOutput] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,6 +57,12 @@ export function JobDetail({ jobId }: Props) {
 
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
+  const isPending = job?.status === "pending";
+
+  // Keep the editable prompt draft in sync with the job until the user edits it
+  useEffect(() => {
+    if (job && !promptDirty) setPromptDraft(job.prompt);
+  }, [job?.prompt, promptDirty]);
 
   // Live clock — ticks every second while running so elapsed time updates
   useEffect(() => {
@@ -131,6 +142,18 @@ export function JobDetail({ jobId }: Props) {
     e.target.value = "";
   }
 
+  async function handleSavePrompt() {
+    if (savingPrompt || !promptDraft.trim() || !promptDirty) return;
+    setSavingPrompt(true);
+    try {
+      await updatePrompt({ id: jobId, prompt: promptDraft.trim() });
+      setPromptDirty(false);
+      toast.success("Prompt updated");
+    } finally {
+      setSavingPrompt(false);
+    }
+  }
+
   async function handleReply(e: React.FormEvent) {
     e.preventDefault();
     if ((!reply.trim() && !attachedImages.length) || sending) return;
@@ -162,7 +185,31 @@ export function JobDetail({ jobId }: Props) {
           <h2 className="text-sm font-semibold text-zinc-100 leading-snug">{job.title}</h2>
           <StatusBadge status={job.status} />
         </div>
-        <p className="text-xs text-zinc-500 mb-3 line-clamp-2">{job.prompt}</p>
+        {isPending ? (
+          <div className="mb-3">
+            <textarea
+              value={promptDraft}
+              onChange={(e) => { setPromptDraft(e.target.value); setPromptDirty(true); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSavePrompt(); }}
+              rows={4}
+              placeholder="Edit the prompt or add more instructions…"
+              className="w-full bg-[#111113] border border-[#27272a] rounded-md px-3 py-2 text-xs text-zinc-300 placeholder:text-zinc-600 resize-y focus:outline-none focus:border-indigo-700 transition-colors font-mono leading-relaxed"
+            />
+            <div className="flex items-center justify-between mt-1.5">
+              <span className="text-[10px] text-zinc-600">Editable until the job runs · ⌘↵ to save</span>
+              <button
+                onClick={handleSavePrompt}
+                disabled={!promptDirty || !promptDraft.trim() || savingPrompt}
+                className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium bg-indigo-700 hover:bg-indigo-600 text-white disabled:opacity-40 transition-colors"
+              >
+                <Check className="w-3 h-3" />
+                {savingPrompt ? "Saving…" : "Save prompt"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-zinc-500 mb-3 line-clamp-2">{job.prompt}</p>
+        )}
 
         <div className="flex items-center gap-3 text-[10px] text-zinc-600 flex-wrap">
           {job.branch && (

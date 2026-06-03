@@ -88,6 +88,23 @@ export const updateStatus = mutation({
   },
 });
 
+export const updatePrompt = mutation({
+  args: {
+    id: v.id("jobs"),
+    prompt: v.string(),
+    title: v.optional(v.string()),
+  },
+  handler: async (ctx, { id, prompt, title }) => {
+    const job = await ctx.db.get(id);
+    if (!job) return;
+    // Only editable before the job is picked up by the worker
+    if (job.status !== "pending") return;
+    const updates: Record<string, unknown> = { prompt };
+    if (title !== undefined) updates.title = title;
+    await ctx.db.patch(id, updates);
+  },
+});
+
 export const addMessage = mutation({
   args: {
     jobId: v.id("jobs"),
