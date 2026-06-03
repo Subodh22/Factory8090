@@ -292,8 +292,13 @@ export default function Home() {
               <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase">
                 Job Detail
               </span>
-              <button onClick={() => setSelectedJob(null)} className="text-zinc-600 hover:text-zinc-300 text-xs">
-                ✕
+              <button
+                onClick={() => setSelectedJob(null)}
+                className="-mr-1.5 p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 active:bg-zinc-700 transition-colors"
+                title="Close"
+                aria-label="Close job detail"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
