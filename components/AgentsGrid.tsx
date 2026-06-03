@@ -1,10 +1,11 @@
 "use client";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { GitBranch, Clock, ExternalLink } from "lucide-react";
+import { GitBranch, Clock, ExternalLink, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "text";
 
@@ -75,7 +76,9 @@ interface AgentCardProps {
 
 function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
   const job = useQuery(api.jobs.get, { id: jobId });
+  const cancel = useMutation(api.jobs.cancel);
   const [now, setNow] = useState(() => Date.now());
+  const [stopping, setStopping] = useState(false);
   const isRunning = job?.status === "running";
 
   useEffect(() => {
@@ -85,6 +88,21 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
   }, [isRunning]);
 
   if (!job) return null;
+
+  // Agents that are mid-flight can be cut; finished ones cannot.
+  const canStop = job.status === "running" || job.status === "queued";
+
+  async function handleStop() {
+    if (stopping) return;
+    setStopping(true);
+    try {
+      await cancel({ id: jobId });
+      toast.success("Agent stopped");
+    } catch {
+      toast.error("Failed to stop agent");
+      setStopping(false);
+    }
+  }
 
   const elapsed = job.startedAt
     ? Math.round(((isRunning ? now : (job.completedAt ?? now)) - job.startedAt) / 1000)
@@ -120,6 +138,17 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
             <span className="flex items-center gap-1 text-[10px] text-zinc-600">
               <Clock className="w-2.5 h-2.5" />{elapsed}s
             </span>
+          )}
+          {canStop && (
+            <button
+              onClick={handleStop}
+              disabled={stopping}
+              title="Stop this agent"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-red-950/40 border border-red-900/50 text-red-300 hover:text-red-200 hover:border-red-700 disabled:opacity-40 transition-colors"
+            >
+              <Square className="w-2.5 h-2.5 fill-current" />
+              {stopping ? "Stopping…" : "Stop"}
+            </button>
           )}
           <StatusBadge status={job.status} />
         </div>
@@ -166,7 +195,7 @@ export function AgentsGrid({ projectId }: Props) {
     j.status === "running" || j.status === "queued"
   );
   const recentJobs = jobs
-    .filter((j) => j.status === "completed" || j.status === "failed")
+    .filter((j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled")
     .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
     .slice(0, 6);
 

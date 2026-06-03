@@ -233,6 +233,20 @@ export const cancel = mutation({
     ctx.db.patch(id, { status: "cancelled", completedAt: Date.now() }),
 });
 
+// Of the given job ids, return those whose status is "cancelled". The worker
+// passes only the jobs it's actively running, so this stays cheap.
+export const cancelledAmong = query({
+  args: { ids: v.array(v.id("jobs")) },
+  handler: async (ctx, { ids }) => {
+    const result: string[] = [];
+    for (const id of ids) {
+      const job = await ctx.db.get(id);
+      if (job?.status === "cancelled") result.push(id);
+    }
+    return result;
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("jobs") },
   handler: async (ctx, { id }) => ctx.db.delete(id),

@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { startJob } from "../lib/queue";
+import { startJob, getActiveJobIds, reapCancelled } from "../lib/queue";
 import { startSseServer } from "../lib/sse-server";
 import fs from "fs";
 import path from "path";
@@ -62,6 +62,18 @@ async function tick() {
       const completedAt = job.completedAt ?? 0;
       if (job.lastUserMessageAt > completedAt) {
         launch(job, "User replied");
+      }
+    }
+
+    // Stop any agents the user cut from the UI (status set to "cancelled")
+    const active = getActiveJobIds();
+    if (active.length > 0) {
+      const cancelled = await convex.query(api.jobs.cancelledAmong, {
+        ids: active as Id<"jobs">[],
+      });
+      if (cancelled.length > 0) {
+        for (const id of cancelled) console.log(`■  Stopping cancelled job: ${id}`);
+        reapCancelled(cancelled);
       }
     }
   } catch (err) {
