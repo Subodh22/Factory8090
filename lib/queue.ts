@@ -1,4 +1,4 @@
-﻿import { createClaudeSession } from "./claude-runner";
+﻿import { createClaudeSession, type TurnResult } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect } from "./worktree";
 
 import { broadcast } from "./sse-server";
@@ -112,9 +112,16 @@ export async function startJob(jobId: Id<"jobs">) {
 
     await withRetry(() => convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running" }));
 
-    // -- Existing session: user replied to a waiting job ---------------------
+    // -- Continue an existing conversation -----------------------------------
+    // Two cases land here: (1) the worker still holds a live session because the
+    // user replied to a waiting job, or (2) the job already finished and the user
+    // sent a fresh message. In case (2) the worktree and in-memory session were
+    // torn down on completion, so we recreate the worktree (the job/<id> branch
+    // still exists) and resume Claude via the session id saved on the job.
     const existingSession = activeSessions.get(jobId);
-    if (existingSession) {
+    const hasNewReply = !!job.lastUserMessageAt && job.lastUserMessageAt > (job.completedAt ?? 0);
+
+    if (existingSession || (hasNewReply && job.sessionId)) {
       // Get the latest user message to send
       let messages: { role: "assistant" | "user"; text: string; images?: string[]; _id: string }[] = [];
       try {
@@ -124,23 +131,50 @@ export async function startJob(jobId: Id<"jobs">) {
       const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
       if (!lastUserMsg) { processing.delete(jobId); return; }
 
+      const liveWorktree = !!(job.worktreePath && fs.existsSync(job.worktreePath));
+      let session: ReturnType<typeof createClaudeSession>;
+      let branch = job.branch!;
+
+      if (existingSession && liveWorktree) {
+        // Reuse the live session + worktree (reply to a waiting job)
+        session = existingSession;
+        worktreePath = job.worktreePath!;
+      } else {
+        // Finished job (or stale state) — rebuild the worktree and resume Claude
+        cleanupSession(jobId);
+        if (liveWorktree) {
+          worktreePath = job.worktreePath!;
+        } else {
+          log(jobId, "Re-creating worktree to continue the conversation...");
+          const wt = createWorktree(project.localPath, jobId, project.defaultBranch);
+          worktreePath = wt.worktreePath;
+          branch = wt.branch;
+          await withRetry(() =>
+            convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", worktreePath, branch })
+          );
+        }
+        if (job.sessionId) log(jobId, `Resuming session ${job.sessionId.slice(0, 8)}...`);
+        session = createClaudeSession(worktreePath, job.sessionId);
+        activeSessions.set(jobId, session);
+        session.onSessionId((id) => {
+          convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", sessionId: id }).catch(() => {});
+        });
+      }
+
       log(jobId, `User replied: "${lastUserMsg.text}"`);
       log(jobId, "-".repeat(40));
 
-      existingSession.onChunk((text) => {
+      session.onChunk((text) => {
         broadcast(jobId, text);
         convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
       });
 
-      worktreePath = job.worktreePath!;
-      const branch = job.branch!;
-
       // Save any attached files to the worktree so Claude can read them
       const messageWithAttachments = buildMessageWithAttachments(lastUserMsg.text, lastUserMsg.images ?? [], worktreePath);
-      const turn = await existingSession.sendMessage(messageWithAttachments);
+      const turn = await session.sendMessage(messageWithAttachments);
       await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
-      const replySessionId = existingSession.getSessionId();
+      const replySessionId = session.getSessionId();
       if (replySessionId) {
         projectSessions.set(job.projectId, { sessionId: replySessionId, inputTokens: turn.inputTokens });
       }
@@ -152,6 +186,9 @@ export async function startJob(jobId: Id<"jobs">) {
     }
 
     // -- New session ----------------------------------------------------------
+    // Baseline for draining mid-run user messages: anything sent after this
+    // point (during worktree setup or the first turn) gets delivered below.
+    const turnStartTs = Date.now();
     log(jobId, `Job started â€" "${job.title}"`);
 
     // Worktree
@@ -299,6 +336,74 @@ function reapIfCancelled(
     try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
   }
   return true;
+}
+
+/** User messages newer than `sinceTs`, oldest first. Used to deliver replies a
+ *  user queued while a turn was in flight. */
+async function pendingUserMessages(
+  convex: ConvexHttpClient,
+  jobId: Id<"jobs">,
+  sinceTs: number,
+): Promise<{ text: string; images?: string[]; ts: number }[]> {
+  let messages: { role: "assistant" | "user"; text: string; images?: string[]; ts: number }[] = [];
+  try {
+    messages = await withRetry(() => convex.query(api.jobs.listMessages, { jobId }));
+  } catch {
+    return [];
+  }
+  return messages.filter((m) => m.role === "user" && m.ts > sinceTs);
+}
+
+interface ConversationLoopArgs {
+  jobId: Id<"jobs">;
+  session: ReturnType<typeof createClaudeSession>;
+  /** Result of a turn already sent (new-session path), or null when the loop
+   *  itself must send the first turn (reply path). */
+  turn: TurnResult | null;
+  /** Only deliver user messages newer than this timestamp. */
+  sinceTs: number;
+  worktreePath: string;
+  branch: string;
+  project: { localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
+  projectId: Id<"projects">;
+  convex: ConvexHttpClient;
+}
+
+/** Deliver any user messages queued while a turn was running — looping so messages
+ *  that arrive during a follow-up turn are caught too — then finalize the job.
+ *  Owns clearing `processing` for the job. */
+async function conversationLoop({
+  jobId, session, turn, sinceTs, worktreePath, branch, project, projectId, convex,
+}: ConversationLoopArgs): Promise<void> {
+  let drainSince = sinceTs;
+
+  while (true) {
+    if (reapIfCancelled(jobId, worktreePath, project)) return;
+
+    const pending = await pendingUserMessages(convex, jobId, drainSince);
+    if (pending.length === 0) break;
+
+    drainSince = pending[pending.length - 1].ts;
+    const combined = pending.map((m) => m.text).filter(Boolean).join("\n\n");
+    const images = pending.flatMap((m) => m.images ?? []);
+    log(jobId, `User replied: "${combined}"`);
+    log(jobId, "-".repeat(40));
+
+    const messageWithAttachments = buildMessageWithAttachments(combined, images, worktreePath);
+    turn = await session.sendMessage(messageWithAttachments);
+    await convex.mutation(api.jobs.updateUsage, {
+      id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd,
+    });
+    const sessionId = session.getSessionId();
+    if (sessionId) projectSessions.set(projectId, { sessionId, inputTokens: turn.inputTokens });
+  }
+
+  // No turn ever ran (reply path raced an empty queue) — nothing to finalize.
+  if (!turn) { processing.delete(jobId); return; }
+
+  if (reapIfCancelled(jobId, worktreePath, project)) return;
+  await handleTurnResult({ jobId, turn, worktreePath, branch, project, convex, keepSession: true });
+  processing.delete(jobId);
 }
 
 interface TurnResultArgs {
