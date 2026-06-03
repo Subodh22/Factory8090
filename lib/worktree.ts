@@ -76,3 +76,30 @@ export function commitAndPush(worktreePath: string, message: string) {
   }
   git(["push", "origin", "HEAD"], worktreePath);
 }
+
+/**
+ * Commit all changes on the current worktree branch, then push them directly
+ * to the repo's default branch — no PR needed.
+ * Fetches latest remote first so the push fast-forwards cleanly.
+ */
+export function commitAndPushDirect(worktreePath: string, message: string, defaultBranch: string) {
+  git(["add", "-A"], worktreePath);
+  const commit = git(["commit", "-m", message], worktreePath);
+  if (commit.status !== 0 && !commit.stdout.includes("nothing to commit")) {
+    throw new Error(`git commit failed: ${commit.stderr}`);
+  }
+
+  // Bring in any new commits on the default branch before pushing
+  git(["fetch", "origin", defaultBranch], worktreePath);
+  const rebase = git(["rebase", `origin/${defaultBranch}`], worktreePath);
+  if (rebase.status !== 0) {
+    // Abort the rebase so the worktree stays clean
+    git(["rebase", "--abort"], worktreePath);
+    throw new Error(`rebase onto ${defaultBranch} failed (merge conflict): ${rebase.stderr}`);
+  }
+
+  const push = git(["push", "origin", `HEAD:${defaultBranch}`], worktreePath);
+  if (push.status !== 0) {
+    throw new Error(`push to ${defaultBranch} failed: ${push.stderr}`);
+  }
+}

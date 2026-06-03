@@ -1,6 +1,6 @@
 ﻿import { createClaudeSession } from "./claude-runner";
-import { createWorktree, removeWorktree, getChangedFiles, commitAndPush } from "./worktree";
-import { createPR, mergePR } from "./github";
+import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect } from "./worktree";
+
 import { broadcast } from "./sse-server";
 import { buildRepoMap } from "./repo-map";
 import { ConvexHttpClient } from "convex/browser";
@@ -303,71 +303,32 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
     return;
   }
 
-  // Claude made changes â€" commit, PR, complete
+  // Claude made changes — commit directly to default branch, no PR needed
   cleanupSession(jobId);
   try {
-    commitAndPush(worktreePath, `feat: ${branch}\n\nAutomated by Factory`);
-    log(jobId, "Committed and pushed.");
+    log(jobId, `Pushing changes to ${project.defaultBranch}...`);
+    commitAndPushDirect(worktreePath, `feat: ${branch}
 
-    const [owner, repo] = project.repo.split("/");
-    let prUrl: string | undefined;
-    let prNumber: number | undefined;
-
-    if (project.githubToken) {
-      log(jobId, "Creating pull requestâ€¦");
-      try {
-        const job = await convex.query(api.jobs.get, { id: jobId });
-        const pr = await createPR(project.githubToken, owner, repo, {
-          title: job?.title ?? branch,
-          body: `## Changes\n${job?.prompt ?? ""}\n\nAutomated by Factory`,
-          head: branch,
-          base: project.defaultBranch,
-          issueNumber: job?.githubIssueNumber,
-        });
-        prUrl = pr.url;
-        prNumber = pr.number;
-        log(jobId, `PR created: ${prUrl}`);
-
-          // Wait for GitHub to compute mergeability before attempting merge
-          await new Promise((r) => setTimeout(r, 3000));
-          try {
-            await mergePR(project.githubToken, owner, repo, pr.number, job?.title ?? branch);
-            log(jobId, "PR merged automatically.");
-          } catch (mergeErr) {
-            // Retry once — GitHub sometimes needs more time
-            try {
-              await new Promise((r) => setTimeout(r, 5000));
-              await mergePR(project.githubToken, owner, repo, pr.number, job?.title ?? branch);
-              log(jobId, "PR merged automatically (retry).");
-            } catch (retryErr) {
-              log(jobId, `Auto-merge failed — check branch protection rules: ${retryErr}`);
-            }
-          }
-      } catch (prErr) {
-        log(jobId, `Note: ${prErr} (PR may already exist)`);
-      }
-    }
+Automated by Factory`, project.defaultBranch);
+    log(jobId, `Merged to ${project.defaultBranch}.`);
 
     await withRetry(() =>
       convex.mutation(api.jobs.updateStatus, {
         id: jobId,
         status: "completed",
-        prUrl,
-        prNumber,
         touchedPaths: changedFiles,
       })
     );
     log(jobId, "Job completed successfully.");
   } catch (err) {
     const msg = String(err);
-    log(jobId, `ERROR during commit/push/PR: ${msg}`);
+    log(jobId, `ERROR during commit/push: ${msg}`);
     await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
   } finally {
     removeWorktree(project.localPath, worktreePath);
     log(jobId, "Worktree cleaned up.");
   }
 }
-
 export function cancelJob(jobId: Id<"jobs">) {
   cleanupSession(jobId);
   processing.delete(jobId);
