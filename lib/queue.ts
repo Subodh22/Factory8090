@@ -187,18 +187,42 @@ export async function startJob(jobId: Id<"jobs">) {
 
     // Save any images attached at job creation to the worktree so Claude can read them
     const promptWithImages = buildMessageWithImages(job.prompt, job.images ?? [], worktreePath);
-    const turn = await session.sendMessage(systemContext + promptWithImages);
+    let turn = await session.sendMessage(systemContext + promptWithImages);
     await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
-    // Persist session ID + token count for next job on this project
-    const finalSessionId = session.getSessionId();
+    // If resume was stale (Claude: "No conversation found"), retry fresh immediately
     const claudeReturnedNothing = !turn.assistantText.trim() && !turn.resultText.trim();
     if (claudeReturnedNothing && resumeId) {
-      // Session was stale (Claude said no conversation found) — clear it so next job starts fresh
       projectSessions.delete(job.projectId);
-      log(jobId, "Cleared stale project session.");
-    } else if (finalSessionId) {
-      projectSessions.set(job.projectId, { sessionId: finalSessionId, inputTokens: turn.inputTokens });
+      log(jobId, "Stale session, retrying fresh...");
+      cleanupSession(jobId);
+
+      const freshSession = createClaudeSession(worktreePath);
+      activeSessions.set(jobId, freshSession);
+      freshSession.onSessionId((id) => {
+        convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", sessionId: id }).catch(() => {});
+      });
+      freshSession.onChunk((text) => {
+        broadcast(jobId, text);
+        convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
+      });
+
+      const freshSystemContext = `${baseRules}${claudeHint}${repoMap}
+---
+
+`;
+      turn = await freshSession.sendMessage(freshSystemContext + promptWithImages);
+      await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
+
+      const freshSessionId = freshSession.getSessionId();
+      if (freshSessionId) {
+        projectSessions.set(job.projectId, { sessionId: freshSessionId, inputTokens: turn.inputTokens });
+      }
+    } else {
+      const finalSessionId = session.getSessionId();
+      if (finalSessionId) {
+        projectSessions.set(job.projectId, { sessionId: finalSessionId, inputTokens: turn.inputTokens });
+      }
     }
 
     await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
