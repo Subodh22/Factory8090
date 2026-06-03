@@ -11,7 +11,7 @@ import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory, LogOut, Zap, LayoutGrid } from "lucide-react";
+import { Plus, Factory, LogOut, Zap, LayoutGrid, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 // Approximate Claude Pro session token cap (~88K tokens per 5-hour window)
@@ -56,6 +56,7 @@ export default function Home() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [tab, setTab] = useState("board");
   const [runningAll, setRunningAll] = useState(false);
+  const [redoingAll, setRedoingAll] = useState(false);
 
   const project = activeProject ? (projects.find((p) => p._id === activeProject) ?? null) : null;
   const projectId = project?._id; // undefined when "All" is selected
@@ -68,11 +69,16 @@ export default function Home() {
   ) ?? [];
   const runningCount = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const pendingCount = allJobs.filter((j) => j.status === "pending").length;
+  const redoableCount = allJobs.filter(
+    (j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled"
+  ).length;
 
-  async function handleRunAll() {
-    setRunningAll(true);
+  async function handleRunAll(redo = false) {
+    const setBusy = redo ? setRedoingAll : setRunningAll;
+    setBusy(true);
     try {
-      const body = projectId ? { projectId } : {};
+      const body: { projectId?: Id<"projects">; redo?: boolean } = projectId ? { projectId } : {};
+      if (redo) body.redo = true;
       const res = await fetch("/api/execute/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -80,13 +86,15 @@ export default function Home() {
       });
       const data = await res.json();
       if (data.started > 0) {
-        toast.success(`Started ${data.started} agent${data.started !== 1 ? "s" : ""} in parallel`);
+        toast.success(
+          `${redo ? "Restarted" : "Started"} ${data.started} agent${data.started !== 1 ? "s" : ""} in parallel`
+        );
         setTab("agents");
       } else {
-        toast.info("No pending jobs to run");
+        toast.info(redo ? "No finished jobs to redo" : "No pending jobs to run");
       }
     } finally {
-      setRunningAll(false);
+      setBusy(false);
     }
   }
 
@@ -146,12 +154,24 @@ export default function Home() {
         <div className="flex items-center gap-3">
           {pendingCount > 0 && (
             <button
-              onClick={handleRunAll}
+              onClick={() => handleRunAll()}
               disabled={runningAll}
               className="flex items-center gap-1.5 px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md transition-colors font-medium"
             >
               <Zap className="w-3 h-3" />
               {runningAll ? "Starting…" : `Run All (${pendingCount})`}
+            </button>
+          )}
+
+          {redoableCount > 0 && (
+            <button
+              onClick={() => handleRunAll(true)}
+              disabled={redoingAll}
+              title="Re-run every finished job from scratch"
+              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 rounded-md transition-colors font-medium"
+            >
+              <RotateCcw className="w-3 h-3" />
+              {redoingAll ? "Redoing…" : `Redo All (${redoableCount})`}
             </button>
           )}
 
