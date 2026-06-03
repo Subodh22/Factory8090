@@ -11,6 +11,7 @@ const COLUMNS = [
   { key: "running",   label: "In Progress", color: "text-indigo-400" },
   { key: "completed", label: "Done",        color: "text-green-400" },
   { key: "failed",    label: "Failed",      color: "text-red-400" },
+  { key: "cancelled", label: "Cancelled",   color: "text-zinc-600" },
 ] as const;
 
 interface Props {
