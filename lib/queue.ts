@@ -1,4 +1,4 @@
-﻿import { createClaudeSession } from "./claude-runner";
+﻿import { createClaudeSession, type TurnResult } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect } from "./worktree";
 
 import { broadcast } from "./sse-server";
@@ -173,6 +173,9 @@ export async function startJob(jobId: Id<"jobs">) {
     }
 
     // -- New session ----------------------------------------------------------
+    // Baseline for draining mid-run user messages: anything sent after this
+    // point (during worktree setup or the first turn) gets delivered below.
+    const turnStartTs = Date.now();
     log(jobId, `Job started â€" "${job.title}"`);
 
     // Worktree
@@ -271,9 +274,20 @@ export async function startJob(jobId: Id<"jobs">) {
       }
     }
 
-    if (reapIfCancelled(jobId, worktreePath, project)) return;
-    await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
-    processing.delete(jobId);
+    // Drain any user messages that arrived while the first turn was running,
+    // then finalize. The active session may have been swapped for a fresh one
+    // above (stale-resume retry), so read it back from the map.
+    await conversationLoop({
+      jobId,
+      session: activeSessions.get(jobId)!,
+      turn,
+      sinceTs: turnStartTs,
+      worktreePath,
+      branch,
+      project: project!,
+      projectId: job.projectId,
+      convex,
+    });
 
   } catch (err) {
     // A user-requested stop kills the Claude process mid-turn, which surfaces
@@ -319,6 +333,74 @@ function reapIfCancelled(
     try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
   }
   return true;
+}
+
+/** User messages newer than `sinceTs`, oldest first. Used to deliver replies a
+ *  user queued while a turn was in flight. */
+async function pendingUserMessages(
+  convex: ConvexHttpClient,
+  jobId: Id<"jobs">,
+  sinceTs: number,
+): Promise<{ text: string; images?: string[]; ts: number }[]> {
+  let messages: { role: "assistant" | "user"; text: string; images?: string[]; ts: number }[] = [];
+  try {
+    messages = await withRetry(() => convex.query(api.jobs.listMessages, { jobId }));
+  } catch {
+    return [];
+  }
+  return messages.filter((m) => m.role === "user" && m.ts > sinceTs);
+}
+
+interface ConversationLoopArgs {
+  jobId: Id<"jobs">;
+  session: ReturnType<typeof createClaudeSession>;
+  /** Result of a turn already sent (new-session path), or null when the loop
+   *  itself must send the first turn (reply path). */
+  turn: TurnResult | null;
+  /** Only deliver user messages newer than this timestamp. */
+  sinceTs: number;
+  worktreePath: string;
+  branch: string;
+  project: { localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
+  projectId: Id<"projects">;
+  convex: ConvexHttpClient;
+}
+
+/** Deliver any user messages queued while a turn was running — looping so messages
+ *  that arrive during a follow-up turn are caught too — then finalize the job.
+ *  Owns clearing `processing` for the job. */
+async function conversationLoop({
+  jobId, session, turn, sinceTs, worktreePath, branch, project, projectId, convex,
+}: ConversationLoopArgs): Promise<void> {
+  let drainSince = sinceTs;
+
+  while (true) {
+    if (reapIfCancelled(jobId, worktreePath, project)) return;
+
+    const pending = await pendingUserMessages(convex, jobId, drainSince);
+    if (pending.length === 0) break;
+
+    drainSince = pending[pending.length - 1].ts;
+    const combined = pending.map((m) => m.text).filter(Boolean).join("\n\n");
+    const images = pending.flatMap((m) => m.images ?? []);
+    log(jobId, `User replied: "${combined}"`);
+    log(jobId, "-".repeat(40));
+
+    const messageWithAttachments = buildMessageWithAttachments(combined, images, worktreePath);
+    turn = await session.sendMessage(messageWithAttachments);
+    await convex.mutation(api.jobs.updateUsage, {
+      id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd,
+    });
+    const sessionId = session.getSessionId();
+    if (sessionId) projectSessions.set(projectId, { sessionId, inputTokens: turn.inputTokens });
+  }
+
+  // No turn ever ran (reply path raced an empty queue) — nothing to finalize.
+  if (!turn) { processing.delete(jobId); return; }
+
+  if (reapIfCancelled(jobId, worktreePath, project)) return;
+  await handleTurnResult({ jobId, turn, worktreePath, branch, project, convex, keepSession: true });
+  processing.delete(jobId);
 }
 
 interface TurnResultArgs {
