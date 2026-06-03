@@ -190,7 +190,12 @@ export async function startJob(jobId: Id<"jobs">) {
 
     // Persist session ID + token count for next job on this project
     const finalSessionId = session.getSessionId();
-    if (finalSessionId) {
+    const claudeReturnedNothing = !turn.assistantText.trim() && !turn.resultText.trim();
+    if (claudeReturnedNothing && resumeId) {
+      // Session was stale (Claude said no conversation found) — clear it so next job starts fresh
+      projectSessions.delete(job.projectId);
+      log(jobId, "Cleared stale project session.");
+    } else if (finalSessionId) {
       projectSessions.set(job.projectId, { sessionId: finalSessionId, inputTokens: turn.inputTokens });
     }
 
