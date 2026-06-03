@@ -10,6 +10,7 @@
 
 import type * as githubIssues from "../githubIssues.js";
 import type * as jobs from "../jobs.js";
+import type * as presence from "../presence.js";
 import type * as projects from "../projects.js";
 
 import type {
@@ -21,6 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   githubIssues: typeof githubIssues;
   jobs: typeof jobs;
+  presence: typeof presence;
   projects: typeof projects;
 }>;
 
