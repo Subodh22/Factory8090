@@ -88,6 +88,27 @@ export const redo = mutation({
   },
 });
 
+// Append extra instructions (and optional images) to a job's prompt while it's
+// still in the backlog. Only allowed before the job starts running.
+export const appendPrompt = mutation({
+  args: {
+    id: v.id("jobs"),
+    text: v.string(),
+    images: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, { id, text, images }) => {
+    const job = await ctx.db.get(id);
+    if (!job) throw new Error("job not found");
+    if (job.status !== "pending" && job.status !== "queued") {
+      throw new Error("can only add to the prompt before a job starts running");
+    }
+    const trimmed = text.trim();
+    const prompt = trimmed ? `${job.prompt}\n\n${trimmed}` : job.prompt;
+    const newImages = images?.length ? [...job.images, ...images] : job.images;
+    await ctx.db.patch(id, { prompt, images: newImages });
+  },
+});
+
 export const updateStatus = mutation({
   args: {
     id: v.id("jobs"),
@@ -231,6 +252,20 @@ export const cancel = mutation({
   args: { id: v.id("jobs") },
   handler: async (ctx, { id }) =>
     ctx.db.patch(id, { status: "cancelled", completedAt: Date.now() }),
+});
+
+// Of the given job ids, return those whose status is "cancelled". The worker
+// passes only the jobs it's actively running, so this stays cheap.
+export const cancelledAmong = query({
+  args: { ids: v.array(v.id("jobs")) },
+  handler: async (ctx, { ids }) => {
+    const result: string[] = [];
+    for (const id of ids) {
+      const job = await ctx.db.get(id);
+      if (job?.status === "cancelled") result.push(id);
+    }
+    return result;
+  },
 });
 
 export const remove = mutation({

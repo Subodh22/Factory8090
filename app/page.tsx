@@ -80,19 +80,28 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0b] text-zinc-100 overflow-hidden">
       {/* Top Bar */}
-      <header className="flex items-center justify-between px-4 h-12 border-b border-[#27272a] flex-shrink-0">
-        <div className="flex items-center gap-1">
-          <div className="flex items-center gap-2 mr-2">
+      <header className="flex items-center gap-2 px-3 sm:px-4 h-12 border-b border-[#27272a] flex-shrink-0">
+        {/* Mobile: open the jobs feed drawer */}
+        <button
+          onClick={() => setFeedOpen(true)}
+          className="lg:hidden flex-shrink-0 text-zinc-400 hover:text-zinc-100 transition-colors"
+          title="Show jobs"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-2 mr-2 flex-shrink-0">
             <Factory className="w-4 h-4 text-indigo-400" />
             <span className="text-sm font-semibold tracking-tight">Factory</span>
           </div>
 
-          <div className="w-px h-4 bg-zinc-800 mr-1" />
+          <div className="w-px h-4 bg-zinc-800 mr-1 flex-shrink-0" />
 
           {/* All projects button */}
           <button
             onClick={() => setActiveProject(null)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors flex-shrink-0 whitespace-nowrap ${
               activeProject === null
                 ? "bg-[#1e1e22] text-zinc-100"
                 : "text-zinc-500 hover:text-zinc-300"
@@ -107,7 +116,7 @@ export default function Home() {
             <button
               key={p._id}
               onClick={() => setActiveProject(p._id)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors flex-shrink-0 whitespace-nowrap ${
                 p._id === activeProject
                   ? "bg-[#1e1e22] text-zinc-100"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -123,7 +132,7 @@ export default function Home() {
 
           <button
             onClick={() => setShowAddProject(true)}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs text-zinc-600 hover:text-zinc-300 transition-colors flex-shrink-0 whitespace-nowrap"
           >
             <Plus className="w-3 h-3" />
             Add repo
@@ -141,13 +150,15 @@ export default function Home() {
             </button>
           )}
 
-          <UsagePill
-            inputTokens={todayStats?.inputTokens ?? 0}
-            outputTokens={todayStats?.outputTokens ?? 0}
-            jobCount={todayStats?.jobCount ?? 0}
-          />
+          <div className="hidden sm:block">
+            <UsagePill
+              inputTokens={todayStats?.inputTokens ?? 0}
+              outputTokens={todayStats?.outputTokens ?? 0}
+              jobCount={todayStats?.jobCount ?? 0}
+            />
+          </div>
 
-          <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
+          <span className="hidden lg:inline text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
             Claude Code · local
           </span>
 
@@ -157,7 +168,7 @@ export default function Home() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={session.user.image} alt={session.user.name ?? ""} className="w-6 h-6 rounded-full" />
               )}
-              <span className="text-xs text-zinc-400">{session.user?.name}</span>
+              <span className="hidden sm:inline text-xs text-zinc-400">{session.user?.name}</span>
               <button
                 onClick={() => signOut()}
                 className="text-zinc-600 hover:text-zinc-300 transition-colors"
@@ -179,8 +190,8 @@ export default function Home() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Feed — filtered by active project */}
-        <div className="w-64 flex-shrink-0 border-r border-[#27272a] flex flex-col overflow-hidden">
+        {/* Left: Feed — static column on desktop, slide-in drawer on mobile */}
+        <div className="hidden lg:flex w-64 flex-shrink-0 border-r border-[#27272a] flex-col overflow-hidden">
           <div className="flex-1 overflow-hidden">
             <MasterFeed projectId={projectId} onSelectJob={setSelectedJob} />
           </div>
@@ -189,9 +200,39 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Mobile feed drawer */}
+        {feedOpen && (
+          <div className="lg:hidden fixed inset-0 z-40 flex">
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setFeedOpen(false)}
+            />
+            <div className="relative w-72 max-w-[82vw] bg-[#0a0a0b] border-r border-[#27272a] flex flex-col">
+              <div className="flex items-center justify-end px-2 h-10 border-b border-[#27272a] flex-shrink-0">
+                <button
+                  onClick={() => setFeedOpen(false)}
+                  className="text-zinc-500 hover:text-zinc-200 p-1"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <MasterFeed
+                  projectId={projectId}
+                  onSelectJob={(id) => { setSelectedJob(id); setFeedOpen(false); }}
+                />
+              </div>
+              <div className="flex-shrink-0 border-t border-[#27272a] p-3">
+                <UsagePanel />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Center */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
+          <div className="px-3 sm:px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-4">
                 {["board", "agents", "chat"].map((t) => (
@@ -215,7 +256,7 @@ export default function Home() {
             </Tabs>
           </div>
 
-          <div className="flex-1 overflow-hidden p-4">
+          <div className="flex-1 overflow-hidden p-3 sm:p-4">
             {tab === "board" && (
               <KanbanBoard projectId={projectId} onSelectJob={setSelectedJob} />
             )}
@@ -245,9 +286,9 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right: Job detail */}
+        {/* Right: Job detail — full-screen overlay on mobile, side column on desktop */}
         {selectedJob && tab !== "agents" && (
-          <div className="w-96 flex-shrink-0 border-l border-[#27272a] flex flex-col overflow-hidden">
+          <div className="fixed inset-0 z-30 bg-[#0a0a0b] lg:static lg:inset-auto lg:z-auto lg:w-96 flex-shrink-0 border-l border-[#27272a] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#27272a]">
               <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase">
                 Job Detail

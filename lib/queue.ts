@@ -55,6 +55,10 @@ function getConvex(): ConvexHttpClient {
 const activeSessions = new Map<string, ReturnType<typeof createClaudeSession>>();
 const processing = new Set<string>();
 
+// Jobs the user asked to stop mid-flight. Checked after each turn so we tear
+// the agent down instead of overwriting the "cancelled" status with completed/failed.
+const cancelledJobs = new Set<string>();
+
 // Per-project session continuity — carry the session ID across jobs so Claude
 // doesn't cold-start on every task. Reset when tokens approach the cap.
 const TOKEN_RESUME_CAP = 60_000;
@@ -128,6 +132,7 @@ export async function startJob(jobId: Id<"jobs">) {
         projectSessions.set(job.projectId, { sessionId: replySessionId, inputTokens: turn.inputTokens });
       }
 
+      if (reapIfCancelled(jobId, worktreePath, project)) return;
       await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
       processing.delete(jobId);
       return;
@@ -232,10 +237,14 @@ export async function startJob(jobId: Id<"jobs">) {
       }
     }
 
+    if (reapIfCancelled(jobId, worktreePath, project)) return;
     await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
     processing.delete(jobId);
 
   } catch (err) {
+    // A user-requested stop kills the Claude process mid-turn, which surfaces
+    // here as a rejection — swallow it rather than marking the job "failed".
+    if (reapIfCancelled(jobId, worktreePath, project)) return;
     processing.delete(jobId);
     cleanupSession(jobId);
     const msg = String(err);
@@ -257,6 +266,25 @@ function cleanupSession(jobId: string) {
     session.cancel();
     activeSessions.delete(jobId);
   }
+}
+
+/** If the user stopped this job mid-flight, tear everything down without
+ *  overwriting the "cancelled" status the UI already set. Returns true if the
+ *  job was cancelled and the caller should bail out of further processing. */
+function reapIfCancelled(
+  jobId: string,
+  worktreePath: string | undefined,
+  project: { localPath: string } | null,
+): boolean {
+  if (!cancelledJobs.has(jobId)) return false;
+  cancelledJobs.delete(jobId);
+  processing.delete(jobId);
+  cleanupSession(jobId);
+  log(jobId as Id<"jobs">, "Stopped by user.");
+  if (worktreePath && project) {
+    try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
+  }
+  return true;
 }
 
 interface TurnResultArgs {
@@ -337,12 +365,30 @@ Automated by Factory`, project.defaultBranch);
   }
 }
 export function cancelJob(jobId: Id<"jobs">) {
+  // Flag in-flight jobs so the running turn bails out instead of marking the
+  // job completed/failed. Waiting jobs have no turn in flight — just drop them.
+  if (processing.has(jobId)) cancelledJobs.add(jobId);
   cleanupSession(jobId);
   processing.delete(jobId);
 }
 
 export function getRunningJobs(): string[] {
   return Array.from(processing);
+}
+
+/** Every job this worker currently holds — actively processing or with a live
+ *  session waiting for a reply. Used to detect cancellations cheaply. */
+export function getActiveJobIds(): string[] {
+  return Array.from(new Set([...processing, ...activeSessions.keys()]));
+}
+
+/** Stop any of the given jobs that this worker is currently running. */
+export function reapCancelled(ids: string[]) {
+  for (const id of ids) {
+    if (processing.has(id) || activeSessions.has(id)) {
+      cancelJob(id as Id<"jobs">);
+    }
+  }
 }
 
 
