@@ -3,13 +3,13 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AttachmentPreview } from "@/components/AttachmentPreview";
 
 interface Props {
   jobId: Id<"jobs">;
+  onRedo?: (newJobId: Id<"jobs">) => void;
 }
 
 type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "divider" | "text";
@@ -38,22 +38,32 @@ function lineClass(type: LineType): string {
 
 const SSE_BASE = process.env.NEXT_PUBLIC_WORKER_SSE_URL ?? "http://localhost:3099";
 
-export function JobDetail({ jobId }: Props) {
+export function JobDetail({ jobId, onRedo }: Props) {
   const job = useQuery(api.jobs.get, { id: jobId });
   const chunks = useQuery(api.jobs.getOutput, { jobId });
   const messages = useQuery(api.jobs.listMessages, { jobId });
   const addMessage = useMutation(api.jobs.addMessage);
+  const redo = useMutation(api.jobs.redo);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [sseOutput, setSseOutput] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Redo panel state — re-run a finished job with optional extra prompt/images
+  const [redoOpen, setRedoOpen] = useState(false);
+  const [redoPrompt, setRedoPrompt] = useState("");
+  const [redoImages, setRedoImages] = useState<string[]>([]);
+  const [redoing, setRedoing] = useState(false);
+  const redoFileInputRef = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const convexOutput = chunks?.map((c) => c.text).join("") ?? "";
 
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
+  // "Done" jobs that can be re-run from scratch
+  const isFinished = job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
 
   // Live clock — ticks every second while running so elapsed time updates
   useEffect(() => {
@@ -134,6 +144,37 @@ export function JobDetail({ jobId }: Props) {
     e.target.value = "";
   }
 
+  async function handleRedoImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    const { images } = await res.json() as { images: string[] };
+    setRedoImages((prev) => [...prev, ...images]);
+    e.target.value = "";
+  }
+
+  async function handleRedo(e: React.FormEvent) {
+    e.preventDefault();
+    if (redoing) return;
+    setRedoing(true);
+    try {
+      const newJobId = await redo({
+        sourceJobId: jobId,
+        extraPrompt: redoPrompt.trim() || undefined,
+        extraImages: redoImages.length ? redoImages : undefined,
+      });
+      setRedoOpen(false);
+      setRedoPrompt("");
+      setRedoImages([]);
+      toast.success("Re-running — queued a fresh agent");
+      onRedo?.(newJobId);
+    } finally {
+      setRedoing(false);
+    }
+  }
+
   async function handleReply(e: React.FormEvent) {
     e.preventDefault();
     if ((!reply.trim() && !attachedFiles.length) || sending) return;
@@ -193,7 +234,76 @@ export function JobDetail({ jobId }: Props) {
               View PR #{job.prNumber}
             </a>
           )}
+          {isFinished && (
+            <button
+              onClick={() => setRedoOpen((o) => !o)}
+              className="flex items-center gap-1 px-2 py-0.5 ml-auto rounded text-[10px] bg-[#1a1a1e] border border-[#27272a] text-zinc-300 hover:text-white hover:border-indigo-700 transition-colors"
+              title="Re-run this job from scratch"
+            >
+              <RotateCcw className="w-2.5 h-2.5" />
+              Redo
+            </button>
+          )}
         </div>
+
+        {/* Redo panel — re-run with optional extra prompt / images */}
+        {isFinished && redoOpen && (
+          <form onSubmit={handleRedo} className="mt-3 p-3 rounded-md border border-indigo-900/50 bg-indigo-950/10 space-y-2">
+            <p className="text-[10px] text-zinc-500">
+              Re-runs in a fresh worktree. Add extra instructions or images below (optional).
+            </p>
+            <textarea
+              value={redoPrompt}
+              onChange={(e) => setRedoPrompt(e.target.value)}
+              placeholder="Anything to change or add this time… (optional)"
+              rows={2}
+              className="w-full bg-[#111113] border border-[#27272a] rounded-md px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-700 resize-none"
+            />
+            {redoImages.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {redoImages.map((src, i) => (
+                  <div key={i} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" className="h-14 w-14 object-cover rounded border border-zinc-700" />
+                    <button
+                      type="button"
+                      onClick={() => setRedoImages((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-zinc-800 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-2.5 h-2.5 text-zinc-300" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input ref={redoFileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleRedoImagePick} />
+              <button
+                type="button"
+                onClick={() => redoFileInputRef.current?.click()}
+                className="px-2 py-1.5 bg-[#111113] border border-[#27272a] rounded-md text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
+                title="Attach image"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="submit"
+                disabled={redoing}
+                className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 rounded-md text-xs font-medium text-white flex items-center gap-1 transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+                {redoing ? "Queuing…" : "Run again"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRedoOpen(false)}
+                className="px-2 py-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Terminal output */}
