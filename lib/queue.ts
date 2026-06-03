@@ -185,7 +185,9 @@ export async function startJob(jobId: Id<"jobs">) {
 
     const systemContext = `${baseRules}${claudeHint}${resumeNote}${repoMap}\n---\n\n`;
 
-    const turn = await session.sendMessage(systemContext + job.prompt);
+    // Save any images attached at job creation to the worktree so Claude can read them
+    const promptWithImages = buildMessageWithImages(job.prompt, job.images ?? [], worktreePath);
+    const turn = await session.sendMessage(systemContext + promptWithImages);
     await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
     // Persist session ID + token count for next job on this project
