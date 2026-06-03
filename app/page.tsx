@@ -10,12 +10,10 @@ import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
+import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Factory, LogOut, Zap, LayoutGrid, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-
-// Approximate Claude Pro session token cap (~88K tokens per 5-hour window)
-const SESSION_TOKEN_CAP = 88_000;
 
 function fmtTokens(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -23,23 +21,36 @@ function fmtTokens(n: number) {
   return `${n}`;
 }
 
+/**
+ * Header pill driven by REAL Claude subscription usage (the same data as
+ * Claude Code's `/usage`). Session % comes from Anthropic, not an estimate.
+ * Token count is the real total from today's jobs.
+ */
 function UsagePill({ inputTokens, outputTokens, jobCount }: { inputTokens: number; outputTokens: number; jobCount: number }) {
+  const { data } = useClaudeUsage();
   const total = inputTokens + outputTokens;
-  const pct = Math.min((total / SESSION_TOKEN_CAP) * 100, 100);
-  const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-blue-500";
+  const session = data?.session ?? null;
+  const pct = session ? Math.min(Math.round(session.utilization), 100) : null;
+  const color = pct === null ? "bg-zinc-600" : pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-blue-500";
+
+  const title = session
+    ? `Session: ${pct}% used · ${resetLabel(session.resets_at)}\nToday: ${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in · ${outputTokens.toLocaleString()} out) across ${jobCount} job${jobCount !== 1 ? "s" : ""}`
+    : `Today: ${total.toLocaleString()} tokens across ${jobCount} job${jobCount !== 1 ? "s" : ""}`;
 
   return (
     <div
       className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-full border border-zinc-800 cursor-default"
-      title={`Today: ${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in · ${outputTokens.toLocaleString()} out) across ${jobCount} job${jobCount !== 1 ? "s" : ""}`}
+      title={title}
     >
       <div className="flex flex-col gap-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] text-zinc-300 leading-none font-medium">{fmtTokens(total)} tokens</span>
-          <span className="text-[10px] text-zinc-500 leading-none">{Math.round(pct)}% used</span>
+          <span className="text-[10px] text-zinc-500 leading-none">
+            {pct === null ? "—" : `${pct}% session`}
+          </span>
         </div>
         <div className="w-24 h-1 bg-zinc-800 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
+          <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct ?? 0}%` }} />
         </div>
       </div>
     </div>
@@ -185,9 +196,11 @@ export default function Home() {
             </button>
           )}
 
-          {todayStats && todayStats.jobCount > 0 && (
-            <UsagePill inputTokens={todayStats.inputTokens} outputTokens={todayStats.outputTokens} jobCount={todayStats.jobCount} />
-          )}
+          <UsagePill
+            inputTokens={todayStats?.inputTokens ?? 0}
+            outputTokens={todayStats?.outputTokens ?? 0}
+            jobCount={todayStats?.jobCount ?? 0}
+          />
 
           <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
             Claude Code · local
@@ -223,7 +236,12 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Feed — filtered by active project */}
         <div className="w-64 flex-shrink-0 border-r border-[#27272a] flex flex-col overflow-hidden">
-          <MasterFeed projectId={projectId} onSelectJob={setSelectedJob} />
+          <div className="flex-1 overflow-hidden">
+            <MasterFeed projectId={projectId} onSelectJob={setSelectedJob} />
+          </div>
+          <div className="flex-shrink-0 border-t border-[#27272a] p-3">
+            <UsagePanel />
+          </div>
         </div>
 
         {/* Center */}
