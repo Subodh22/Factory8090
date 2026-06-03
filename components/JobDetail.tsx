@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, GitBranch, Clock, Send, Coins } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -44,7 +44,9 @@ export function JobDetail({ jobId }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [sseOutput, setSseOutput] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const convexOutput = chunks?.map((c) => c.text).join("") ?? "";
 
@@ -118,13 +120,25 @@ export function JobDetail({ jobId }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [output, messages]);
 
+  async function handleImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    const { images } = await res.json() as { images: string[] };
+    setAttachedImages((prev) => [...prev, ...images]);
+    e.target.value = "";
+  }
+
   async function handleReply(e: React.FormEvent) {
     e.preventDefault();
-    if (!reply.trim() || sending) return;
+    if ((!reply.trim() && !attachedImages.length) || sending) return;
     setSending(true);
     try {
-      await addMessage({ jobId, role: "user", text: reply.trim() });
+      await addMessage({ jobId, role: "user", text: reply.trim(), images: attachedImages.length ? attachedImages : undefined });
       setReply("");
+      setAttachedImages([]);
     } finally {
       setSending(false);
     }
@@ -269,6 +283,14 @@ export function JobDetail({ jobId }: Props) {
                     ? "bg-[#141418] text-zinc-300 border border-[#27272a]"
                     : "bg-yellow-950/40 text-yellow-200 border border-yellow-900/50"
                 }`}>
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="flex gap-1.5 flex-wrap mb-1.5">
+                      {msg.images.map((src, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={src} alt="" className="h-16 w-16 object-cover rounded border border-zinc-700" />
+                      ))}
+                    </div>
+                  )}
                   {msg.text}
                 </div>
               </div>
@@ -294,11 +316,38 @@ export function JobDetail({ jobId }: Props) {
               Message will be delivered when Claude finishes this turn
             </p>
           )}
+          {/* Image previews */}
+          {attachedImages.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {attachedImages.map((src, i) => (
+                <div key={i} className="relative group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt="" className="h-14 w-14 object-cover rounded border border-zinc-700" />
+                  <button
+                    type="button"
+                    onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-zinc-800 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-2.5 h-2.5 text-zinc-300" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <form onSubmit={handleReply} className="flex gap-2">
+            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImagePick} />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-2 py-2 bg-[#111113] border border-[#27272a] rounded-md text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors flex-shrink-0"
+              title="Attach image"
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
             <input
               value={reply}
               onChange={(e) => setReply(e.target.value)}
-              placeholder={isWaiting ? "Reply to Claude…" : isRunning ? "Queue a message…" : "Message Claude…"}
+              placeholder={isWaiting ? "Reply to Claude..." : isRunning ? "Queue a message..." : "Message Claude..."}
               className={`flex-1 bg-[#111113] border rounded-md px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none transition-colors ${
                 isWaiting ? "border-yellow-700/60 focus:border-yellow-600" : "border-[#27272a] focus:border-indigo-700"
               }`}
@@ -306,7 +355,7 @@ export function JobDetail({ jobId }: Props) {
             />
             <button
               type="submit"
-              disabled={!reply.trim() || sending}
+              disabled={(!reply.trim() && !attachedImages.length) || sending}
               className={`px-3 py-2 disabled:opacity-40 rounded-md text-xs font-medium flex items-center gap-1 transition-colors ${
                 isWaiting
                   ? "bg-yellow-600 hover:bg-yellow-500 text-black"

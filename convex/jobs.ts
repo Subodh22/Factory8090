@@ -93,9 +93,10 @@ export const addMessage = mutation({
     jobId: v.id("jobs"),
     role: v.union(v.literal("assistant"), v.literal("user")),
     text: v.string(),
+    images: v.optional(v.array(v.string())),
   },
-  handler: async (ctx, { jobId, role, text }) => {
-    await ctx.db.insert("jobMessages", { jobId, role, text, ts: Date.now() });
+  handler: async (ctx, { jobId, role, text, images }) => {
+    await ctx.db.insert("jobMessages", { jobId, role, text, images, ts: Date.now() });
     if (role === "user") {
       await ctx.db.patch(jobId, { lastUserMessageAt: Date.now() });
     }

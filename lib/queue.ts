@@ -8,6 +8,24 @@ import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import fs from "fs";
 import path from "path";
+import os from "os";
+
+/** Save base64 images to temp files, return message text with image paths prepended. */
+function buildMessageWithImages(text: string, images: string[], worktreePath: string): string {
+  if (!images.length) return text;
+  const paths: string[] = [];
+  for (const dataUrl of images) {
+    const m = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!m) continue;
+    const [, ext, b64] = m;
+    const dest = path.join(worktreePath, `_factory_img_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+    fs.writeFileSync(dest, Buffer.from(b64, "base64"));
+    paths.push(dest);
+  }
+  if (!paths.length) return text;
+  const refs = paths.map((p, i) => `Image ${i + 1}: ${p}`).join("\n");
+  return `${refs}\n\n${text}`;
+}
 
 /** Read CLAUDE.md from the worktree root, or null if it doesn't exist. */
 function readClaudeMd(dir: string): string | null {
@@ -74,7 +92,7 @@ export async function startJob(jobId: Id<"jobs">) {
     const existingSession = activeSessions.get(jobId);
     if (existingSession) {
       // Get the latest user message to send
-      let messages: { role: "assistant" | "user"; text: string; _id: string }[] = [];
+      let messages: { role: "assistant" | "user"; text: string; images?: string[]; _id: string }[] = [];
       try {
         messages = await withRetry(() => convex.query(api.jobs.listMessages, { jobId }));
       } catch { /* continue with empty */ }
@@ -93,7 +111,9 @@ export async function startJob(jobId: Id<"jobs">) {
       worktreePath = job.worktreePath!;
       const branch = job.branch!;
 
-      const turn = await existingSession.sendMessage(lastUserMsg.text);
+      // Save any attached images to the worktree so Claude can read them
+      const messageWithImages = buildMessageWithImages(lastUserMsg.text, lastUserMsg.images ?? [], worktreePath);
+      const turn = await existingSession.sendMessage(messageWithImages);
       await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
       const replySessionId = existingSession.getSessionId();

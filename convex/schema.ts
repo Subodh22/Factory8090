@@ -55,6 +55,7 @@ export default defineSchema({
     jobId: v.id("jobs"),
     role: v.union(v.literal("assistant"), v.literal("user")),
     text: v.string(),
+    images: v.optional(v.array(v.string())),  // base64 data URLs attached by user
     ts: v.number(),
   }).index("by_job", ["jobId"]),
 
