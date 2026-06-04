@@ -10,6 +10,7 @@ import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { AddProjectModal } from "@/components/AddProjectModal";
+import { EnvPanel } from "@/components/EnvPanel";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Factory, LogOut, LayoutGrid, Menu, X } from "lucide-react";
@@ -237,7 +238,7 @@ export default function Home() {
           <div className="px-3 sm:px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-4">
-                {["board", "agents", "chat"].map((t) => (
+                {["board", "agents", "chat", "env"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
@@ -251,7 +252,8 @@ export default function Home() {
                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
                          )}
                        </span>
-                     ) : "New Job"}
+                     ) :
+                     t === "chat" ? "New Job" : "Env"}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -279,6 +281,17 @@ export default function Home() {
             {tab === "chat" && !projectId && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
                 <p className="text-sm text-zinc-500">Select a project to create a job</p>
+                <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
+              </div>
+            )}
+
+            {tab === "env" && project && (
+              <EnvPanel key={project._id} localPath={project.localPath} projectName={project.name} />
+            )}
+
+            {tab === "env" && !project && (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <p className="text-sm text-zinc-500">Select a project to edit its .env</p>
                 <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
               </div>
             )}
