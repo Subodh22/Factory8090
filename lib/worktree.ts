@@ -1,6 +1,7 @@
 import { execSync, spawnSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import os from "os";
 
 function git(args: string[], cwd: string): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" });
@@ -45,6 +46,58 @@ function repoExists(dir: string): boolean {
   // Persistent non-ENOENT error: assume the path is there but momentarily
   // locked rather than failing the whole job.
   return true;
+}
+
+/** Where repos get cloned when a project has no explicit local path. Mirrors the
+ *  default used by /api/projects/clone, but resolved on the WORKER's machine. */
+export function defaultWorkspace(): string {
+  return process.env.FACTORY_WORKSPACE ?? path.join(os.homedir(), "factory-workspace");
+}
+
+/**
+ * Ensure the project's repo is present on this machine and return its path.
+ *
+ * The web UI may be hosted remotely (e.g. Vercel), where it cannot clone onto
+ * the worker's disk — so a project can reach the worker with no usable
+ * `localPath`. In that case we clone `<repo>` into the workspace here, on the
+ * machine that actually runs jobs. If `localPath` already exists, it's used
+ * as-is (no network call).
+ */
+export function ensureRepoCloned(opts: {
+  repo: string;
+  localPath?: string;
+  githubToken?: string;
+}): string {
+  const { repo, localPath, githubToken } = opts;
+
+  if (localPath?.trim() && repoExists(resolveRepo(localPath))) {
+    return resolveRepo(localPath);
+  }
+
+  if (!repo || !repo.includes("/")) {
+    // Nothing to clone from — honour whatever path we were given, or give up.
+    if (localPath?.trim()) return resolveRepo(localPath);
+    throw new Error("Project has no local path and no clonable repo");
+  }
+
+  const repoName = repo.split("/")[1];
+  const dest = localPath?.trim()
+    ? resolveRepo(localPath)
+    : path.join(defaultWorkspace(), repoName);
+
+  if (repoExists(dest)) return dest;
+
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const url = githubToken
+    ? `https://${githubToken}@github.com/${repo}.git`
+    : `https://github.com/${repo}.git`;
+  const result = git(["clone", url, dest], path.dirname(dest));
+  if (result.status !== 0) {
+    // Strip the token from any echoed URL before surfacing the error.
+    const safeErr = (result.stderr || result.stdout).split(githubToken ?? "\0").join("***");
+    throw new Error(`git clone failed: ${safeErr}`);
+  }
+  return dest;
 }
 
 export function createWorktree(repoPath: string, jobId: string, baseBranch: string): { worktreePath: string; branch: string } {

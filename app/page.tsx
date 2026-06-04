@@ -10,7 +10,10 @@ import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { TerminalPanel } from "@/components/TerminalPanel";
+import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
+import { EnvPanel } from "@/components/EnvPanel";
+import { JobNotifications } from "@/components/JobNotifications";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Factory, LogOut, LayoutGrid, Menu, X } from "lucide-react";
@@ -82,6 +85,7 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0b] text-zinc-100 overflow-hidden">
+      <JobNotifications />
       {/* Top Bar */}
       <header className="flex items-center gap-2 px-3 sm:px-4 h-12 border-b border-[#27272a] flex-shrink-0">
         {/* Mobile: open the jobs feed drawer */}
@@ -238,7 +242,7 @@ export default function Home() {
           <div className="px-3 sm:px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-4">
-                {["board", "agents", "chat", "terminal"].map((t) => (
+                {["board", "agents", "chat", "create", "env", "terminal"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
@@ -252,7 +256,9 @@ export default function Home() {
                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
                          )}
                        </span>
-                     ) : t === "terminal" ? "Terminal" : "New Job"}
+                     ) : t === "chat" ? "New Job" :
+                     t === "create" ? "Create Project" :
+                     t === "terminal" ? "Terminal" : "Env"}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -277,9 +283,30 @@ export default function Home() {
               </div>
             )}
 
+            {tab === "create" && (
+              <CreateProject
+                onCreated={(pid, jid) => {
+                  setActiveProject(pid);
+                  setSelectedJob(jid);
+                  setTab("board");
+                }}
+              />
+            )}
+
             {tab === "chat" && !projectId && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
                 <p className="text-sm text-zinc-500">Select a project to create a job</p>
+                <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
+              </div>
+            )}
+
+            {tab === "env" && project && (
+              <EnvPanel key={project._id} localPath={project.localPath} projectName={project.name} />
+            )}
+
+            {tab === "env" && !project && (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <p className="text-sm text-zinc-500">Select a project to edit its .env</p>
                 <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
               </div>
             )}
