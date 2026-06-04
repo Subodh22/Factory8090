@@ -9,6 +9,7 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
+import { TerminalPanel } from "@/components/TerminalPanel";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -237,7 +238,7 @@ export default function Home() {
           <div className="px-3 sm:px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-4">
-                {["board", "agents", "chat"].map((t) => (
+                {["board", "agents", "chat", "terminal"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
@@ -251,7 +252,7 @@ export default function Home() {
                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
                          )}
                        </span>
-                     ) : "New Job"}
+                     ) : t === "terminal" ? "Terminal" : "New Job"}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -282,11 +283,22 @@ export default function Home() {
                 <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
               </div>
             )}
+
+            {tab === "terminal" && project && (
+              <TerminalPanel project={{ name: project.name, localPath: project.localPath }} />
+            )}
+
+            {tab === "terminal" && !project && (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <p className="text-sm text-zinc-500">Select a project to open a terminal</p>
+                <p className="text-xs text-zinc-700">The terminal runs commands from the repo&apos;s root directory</p>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right: Job detail — full-screen overlay on mobile, side column on desktop */}
-        {selectedJob && tab !== "agents" && (
+        {selectedJob && tab !== "agents" && tab !== "terminal" && (
           <div className="fixed inset-0 z-30 bg-[#0a0a0b] lg:static lg:inset-auto lg:z-auto lg:w-96 flex-shrink-0 border-l border-[#27272a] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#27272a]">
               <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase">

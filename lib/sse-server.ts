@@ -1,6 +1,11 @@
 import http from "http";
+import { spawn, type ChildProcess } from "child_process";
 
 const subscribers = new Map<string, Set<http.ServerResponse>>();
+
+// Live terminal commands keyed by their stream/session id, so a kill request
+// can find and stop the right child process.
+const terminalProcs = new Map<string, ChildProcess>();
 
 export function broadcast(jobId: string, text: string) {
   const clients = subscribers.get(jobId);
@@ -15,11 +20,55 @@ export function broadcast(jobId: string, text: string) {
   }
 }
 
+function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (c) => {
+      raw += c;
+      if (raw.length > 1_000_000) reject(new Error("body too large"));
+    });
+    req.on("end", () => {
+      try { resolve(raw ? JSON.parse(raw) : {}); }
+      catch { reject(new Error("invalid JSON")); }
+    });
+    req.on("error", reject);
+  });
+}
+
+// Run one shell command in `cwd`, streaming stdout/stderr to subscribers of
+// `sessionId`. The browser opens an EventSource on /stream/<sessionId> first,
+// then POSTs here. stderr chunks and the final exit code use \x00-markers the
+// UI colour-codes, mirroring the convention claude-runner.ts uses.
+function runTerminalCommand(sessionId: string, cwd: string, command: string) {
+  const existing = terminalProcs.get(sessionId);
+  if (existing) {
+    try { existing.kill(); } catch { /* already gone */ }
+  }
+
+  let child: ChildProcess;
+  try {
+    child = spawn(command, { cwd, shell: true, env: process.env });
+  } catch (err) {
+    broadcast(sessionId, `\x00stderr\x00${(err as Error).message}\n`);
+    broadcast(sessionId, `\x00exit\x001`);
+    return;
+  }
+
+  terminalProcs.set(sessionId, child);
+  child.stdout?.on("data", (d: Buffer) => broadcast(sessionId, d.toString()));
+  child.stderr?.on("data", (d: Buffer) => broadcast(sessionId, `\x00stderr\x00${d.toString()}`));
+  child.on("error", (err) => broadcast(sessionId, `\x00stderr\x00${err.message}\n`));
+  child.on("close", (code) => {
+    terminalProcs.delete(sessionId);
+    broadcast(sessionId, `\x00exit\x00${code ?? 0}`);
+  });
+}
+
 export function startSseServer(port = 3099): http.Server {
   const server = http.createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Cache-Control");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Cache-Control, Content-Type");
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -57,6 +106,49 @@ export function startSseServer(port = 3099): http.Server {
           if (set.size === 0) subscribers.delete(jobId);
         }
       });
+      return;
+    }
+
+    // Run a shell command for an interactive terminal session. The browser must
+    // already be subscribed to /stream/<sessionId> to receive the output.
+    if (req.method === "POST" && url === "/terminal/exec") {
+      readJsonBody(req)
+        .then((body) => {
+          const sessionId = String(body.sessionId ?? "");
+          const cwd = String(body.cwd ?? "");
+          const command = String(body.command ?? "");
+          if (!sessionId || !cwd || !command) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "sessionId, cwd and command are required" }));
+            return;
+          }
+          runTerminalCommand(sessionId, cwd, command);
+          res.writeHead(202, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        })
+        .catch((err) => {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        });
+      return;
+    }
+
+    // Stop the command currently running for a terminal session.
+    if (req.method === "POST" && url === "/terminal/kill") {
+      readJsonBody(req)
+        .then((body) => {
+          const sessionId = String(body.sessionId ?? "");
+          const child = terminalProcs.get(sessionId);
+          if (child) {
+            try { child.kill(); } catch { /* already gone */ }
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, killed: Boolean(child) }));
+        })
+        .catch((err) => {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        });
       return;
     }
 
