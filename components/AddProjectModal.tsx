@@ -106,17 +106,21 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
           body: JSON.stringify({ repo: form.repo }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        localPath = data.localPath;
-        if (data.alreadyExists) {
-          toast.info(`Using existing clone at ${localPath}`);
+        if (res.ok) {
+          localPath = data.localPath;
+          if (data.alreadyExists) {
+            toast.info(`Using existing clone at ${localPath}`);
+          } else {
+            toast.success(`Cloned to ${localPath}`);
+          }
         } else {
-          toast.success(`Cloned to ${localPath}`);
+          // The server (e.g. the hosted Vercel UI) can't clone onto the local
+          // worker's disk. That's fine — leave localPath empty and the worker
+          // will clone the repo itself the first time it runs a job.
+          toast.info("Local worker will clone this repo on first run");
         }
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Clone failed");
-        setCloning(false);
-        return;
+      } catch {
+        toast.info("Local worker will clone this repo on first run");
       } finally {
         setCloning(false);
       }

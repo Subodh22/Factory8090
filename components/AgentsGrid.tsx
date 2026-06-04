@@ -186,64 +186,87 @@ interface Props {
   projectId?: Id<"projects">;
 }
 
+type AgentFilter = "all" | "running" | "done" | "failed" | "cancelled";
+
+const FILTERS: { key: AgentFilter; label: string; statuses: string[] }[] = [
+  { key: "all",       label: "All",       statuses: [] },
+  { key: "running",   label: "Running",   statuses: ["running", "queued", "waiting_for_input"] },
+  { key: "done",      label: "Done",      statuses: ["completed"] },
+  { key: "failed",    label: "Failed",    statuses: ["failed"] },
+  { key: "cancelled", label: "Cancelled", statuses: ["cancelled"] },
+];
+
 export function AgentsGrid({ projectId }: Props) {
   const jobs = useQuery(api.jobs.list, projectId ? { projectId } : {}) ?? [];
   const projects = useQuery(api.projects.list, {}) ?? [];
   const projectMap = Object.fromEntries(projects.map((p) => [p._id, p]));
+  const [filter, setFilter] = useState<AgentFilter>("all");
 
-  const activeJobs = jobs.filter((j) =>
-    j.status === "running" || j.status === "queued"
-  );
-  const recentJobs = jobs
-    .filter((j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled")
-    .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
-    .slice(0, 6);
+  const isActive = (s: string) => s === "running" || s === "queued" || s === "waiting_for_input";
 
-  const displayJobs = [...activeJobs, ...recentJobs];
+  // Active agents float to the top; finished ones sort by most-recently completed.
+  const sortedJobs = [...jobs].sort((a, b) => {
+    const aActive = isActive(a.status);
+    const bActive = isActive(b.status);
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    return (b.completedAt ?? b._creationTime) - (a.completedAt ?? a._creationTime);
+  });
 
-  if (displayJobs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-        <div className="w-12 h-12 rounded-full border border-zinc-800 flex items-center justify-center">
-          <span className="text-xl">⚡</span>
-        </div>
-        <p className="text-sm text-zinc-500">No agents running</p>
-        <p className="text-xs text-zinc-700">Queue some jobs and click Run All to start parallel execution</p>
-      </div>
-    );
-  }
+  const counts = Object.fromEntries(
+    FILTERS.map((f) => [
+      f.key,
+      f.key === "all" ? jobs.length : jobs.filter((j) => f.statuses.includes(j.status)).length,
+    ])
+  ) as Record<AgentFilter, number>;
+
+  const activeFilter = FILTERS.find((f) => f.key === filter)!;
+  const displayJobs =
+    filter === "all"
+      ? sortedJobs
+      : sortedJobs.filter((j) => activeFilter.statuses.includes(j.status));
 
   const showProjectTag = !projectId;
 
   return (
-    <div className="h-full overflow-y-auto">
-      {activeJobs.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[10px] font-semibold text-zinc-500 tracking-widest uppercase mb-3">
-            Active — {activeJobs.length} agent{activeJobs.length !== 1 ? "s" : ""} running
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {activeJobs.map((j) => {
-              const p = projectMap[j.projectId];
-              return (
-                <AgentCard
-                  key={j._id}
-                  jobId={j._id}
-                  projectName={showProjectTag ? p?.name : undefined}
-                  projectColor={showProjectTag ? p?.color : undefined}
-                />
-              );
-            })}
+    <div className="h-full flex flex-col">
+      <div className="flex flex-wrap items-center gap-1.5 mb-4 flex-shrink-0">
+        {FILTERS.map((f) => {
+          const selected = filter === f.key;
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+                selected
+                  ? "bg-indigo-950 border-indigo-700 text-indigo-300"
+                  : "bg-[#0d0d0f] border-[#27272a] text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
+              }`}
+            >
+              {f.label}
+              <span className={`text-[9px] tabular-nums ${selected ? "text-indigo-400" : "text-zinc-600"}`}>
+                {counts[f.key]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {displayJobs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center">
+          <div className="w-12 h-12 rounded-full border border-zinc-800 flex items-center justify-center">
+            <span className="text-xl">⚡</span>
           </div>
-        </div>
-      )}
-      {recentJobs.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold text-zinc-500 tracking-widest uppercase mb-3">
-            Recent
+          <p className="text-sm text-zinc-500">
+            {filter === "all" ? "No agents running" : `No ${activeFilter.label.toLowerCase()} agents`}
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {recentJobs.map((j) => {
+          {filter === "all" && (
+            <p className="text-xs text-zinc-700">Queue some jobs and click Run All to start parallel execution</p>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-3">
+            {displayJobs.map((j) => {
               const p = projectMap[j.projectId];
               return (
                 <AgentCard

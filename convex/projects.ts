@@ -29,6 +29,7 @@ export const update = mutation({
   args: {
     id: v.id("projects"),
     name: v.optional(v.string()),
+    localPath: v.optional(v.string()),
     githubToken: v.optional(v.string()),
     agentRules: v.optional(v.string()),
     color: v.optional(v.string()),

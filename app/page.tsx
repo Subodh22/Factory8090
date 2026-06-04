@@ -9,8 +9,10 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
+import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { EnvPanel } from "@/components/EnvPanel";
+import { JobNotifications } from "@/components/JobNotifications";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Factory, LogOut, LayoutGrid, Menu, X } from "lucide-react";
@@ -82,6 +84,7 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0b] text-zinc-100 overflow-hidden">
+      <JobNotifications />
       {/* Top Bar */}
       <header className="flex items-center gap-2 px-3 sm:px-4 h-12 border-b border-[#27272a] flex-shrink-0">
         {/* Mobile: open the jobs feed drawer */}
@@ -238,7 +241,7 @@ export default function Home() {
           <div className="px-3 sm:px-4 pt-3 border-b border-[#27272a] flex-shrink-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-4">
-                {["board", "agents", "chat", "env"].map((t) => (
+                {["board", "agents", "chat", "create", "env"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
@@ -252,8 +255,8 @@ export default function Home() {
                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
                          )}
                        </span>
-                     ) :
-                     t === "chat" ? "New Job" : "Env"}
+                     ) : t === "chat" ? "New Job" :
+                     t === "create" ? "Create Project" : "Env"}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -276,6 +279,16 @@ export default function Home() {
                   onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }}
                 />
               </div>
+            )}
+
+            {tab === "create" && (
+              <CreateProject
+                onCreated={(pid, jid) => {
+                  setActiveProject(pid);
+                  setSelectedJob(jid);
+                  setTab("board");
+                }}
+              />
             )}
 
             {tab === "chat" && !projectId && (
