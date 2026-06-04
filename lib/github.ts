@@ -23,6 +23,26 @@ export async function fetchIssues(token: string, owner: string, repo: string) {
   }));
 }
 
+export async function createRepo(
+  token: string,
+  name: string,
+  description: string,
+  isPrivate: boolean
+) {
+  const octokit = makeOctokit(token);
+  const { data } = await octokit.repos.createForAuthenticatedUser({
+    name,
+    description: description || undefined,
+    private: isPrivate,
+    auto_init: true, // seed an initial commit + default branch so the repo is cloneable
+  });
+  return {
+    fullName: data.full_name,
+    defaultBranch: data.default_branch,
+    htmlUrl: data.html_url,
+  };
+}
+
 export async function getRepoInfo(token: string, owner: string, repo: string) {
   const octokit = makeOctokit(token);
   const { data } = await octokit.repos.get({ owner, repo });

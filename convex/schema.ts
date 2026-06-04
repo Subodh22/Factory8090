@@ -65,6 +65,14 @@ export default defineSchema({
     ts: v.number(),
   }).index("by_job", ["jobId"]),
 
+  // High-churn browser presence — one row per open tab, refreshed on a heartbeat.
+  // The worker reads this to decide whether to email (no browser) or rely on the
+  // in-app popup (browser open).
+  presence: defineTable({
+    clientId: v.string(),
+    lastSeen: v.number(),
+  }).index("by_client", ["clientId"]),
+
   githubIssues: defineTable({
     projectId: v.id("projects"),
     number: v.number(),
