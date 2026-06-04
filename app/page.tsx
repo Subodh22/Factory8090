@@ -11,6 +11,7 @@ import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
 import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
+import { JobNotifications } from "@/components/JobNotifications";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Factory, LogOut, LayoutGrid, Menu, X } from "lucide-react";
@@ -82,6 +83,7 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0b] text-zinc-100 overflow-hidden">
+      <JobNotifications />
       {/* Top Bar */}
       <header className="flex items-center gap-2 px-3 sm:px-4 h-12 border-b border-[#27272a] flex-shrink-0">
         {/* Mobile: open the jobs feed drawer */}

@@ -2,6 +2,7 @@
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect } from "./worktree";
 
 import { broadcast } from "./sse-server";
+import { sendJobNotification } from "./notify";
 import { buildRepoMap } from "./repo-map";
 import { parseDataUrl, safeFilename } from "./attachments";
 import { ConvexHttpClient } from "convex/browser";
@@ -71,6 +72,16 @@ function log(jobId: Id<"jobs">, msg: string) {
   getConvex().mutation(api.jobs.appendOutput, { jobId, text: line }).catch(() => {});
 }
 
+/** Was a browser tab open within the last 30s? If so, the UI shows a popup and
+ *  we skip the email. On any error, assume offline so the email still goes out. */
+async function browserIsOpen(convex: ConvexHttpClient): Promise<boolean> {
+  try {
+    return await convex.query(api.presence.anyOnline, { since: Date.now() - 30_000 });
+  } catch {
+    return false;
+  }
+}
+
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
   for (let i = 0; i < retries; i++) {
     try {
@@ -89,11 +100,13 @@ export async function startJob(jobId: Id<"jobs">) {
 
   const convex = getConvex();
   let worktreePath: string | undefined;
+  let jobTitle: string | undefined;
   let project: Awaited<ReturnType<typeof convex.query<typeof api.projects.get>>> | null = null;
 
   try {
     const job = await withRetry(() => convex.query(api.jobs.get, { id: jobId }));
     if (!job) { processing.delete(jobId); return; }
+    jobTitle = job.title;
     project = await withRetry(() => convex.query(api.projects.get, { id: job.projectId }));
     if (!project) { processing.delete(jobId); return; }
 
@@ -167,7 +180,7 @@ export async function startJob(jobId: Id<"jobs">) {
       }
 
       if (reapIfCancelled(jobId, worktreePath, project)) return;
-      await handleTurnResult({ jobId, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+      await handleTurnResult({ jobId, title: job.title, turn, worktreePath, branch, project: project!, convex, keepSession: true });
       processing.delete(jobId);
       return;
     }
@@ -274,20 +287,9 @@ export async function startJob(jobId: Id<"jobs">) {
       }
     }
 
-    // Drain any user messages that arrived while the first turn was running,
-    // then finalize. The active session may have been swapped for a fresh one
-    // above (stale-resume retry), so read it back from the map.
-    await conversationLoop({
-      jobId,
-      session: activeSessions.get(jobId)!,
-      turn,
-      sinceTs: turnStartTs,
-      worktreePath,
-      branch,
-      project: project!,
-      projectId: job.projectId,
-      convex,
-    });
+    if (reapIfCancelled(jobId, worktreePath, project)) return;
+    await handleTurnResult({ jobId, title: job.title, turn, worktreePath, branch, project: project!, convex, keepSession: true });
+    processing.delete(jobId);
 
   } catch (err) {
     // A user-requested stop kills the Claude process mid-turn, which surfaces
@@ -302,6 +304,7 @@ export async function startJob(jobId: Id<"jobs">) {
     await withRetry(() =>
       getConvex().mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg })
     ).catch((e) => console.error(`[startJob] could not mark job failed: ${e}`));
+    await sendJobNotification({ jobId, title: jobTitle, status: "failed", projectName: project?.name, error: msg, browserOnline: await browserIsOpen(getConvex()) });
     if (worktreePath && project) {
       try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
     }
@@ -405,10 +408,11 @@ async function conversationLoop({
 
 interface TurnResultArgs {
   jobId: Id<"jobs">;
+  title?: string;
   turn: { assistantText: string; resultText: string };
   worktreePath: string;
   branch: string;
-  project: { localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
+  project: { name?: string; localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
   convex: ConvexHttpClient;
   keepSession: boolean;
 }
@@ -419,7 +423,7 @@ function responseHasQuestion(text: string): boolean {
   return lines[lines.length - 1].trim().endsWith("?");
 }
 
-async function handleTurnResult({ jobId, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
+async function handleTurnResult({ jobId, title, turn, worktreePath, branch, project, convex }: TurnResultArgs) {
   log(jobId, "-".repeat(40));
 
   const changedFiles = getChangedFiles(worktreePath);
@@ -449,6 +453,7 @@ async function handleTurnResult({ jobId, turn, worktreePath, branch, project, co
       convex.mutation(api.jobs.updateStatus, { id: jobId, status: "completed" })
     );
     log(jobId, "Job completed successfully.");
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, browserOnline: await browserIsOpen(convex) });
     removeWorktree(project.localPath, worktreePath);
     log(jobId, "Worktree cleaned up.");
     return;
@@ -471,10 +476,12 @@ Automated by Factory`, project.defaultBranch);
       })
     );
     log(jobId, "Job completed successfully.");
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles, browserOnline: await browserIsOpen(convex) });
   } catch (err) {
     const msg = String(err);
     log(jobId, `ERROR during commit/push: ${msg}`);
     await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
+    await sendJobNotification({ jobId, title, status: "failed", projectName: project.name, error: msg, browserOnline: await browserIsOpen(convex) });
   } finally {
     removeWorktree(project.localPath, worktreePath);
     log(jobId, "Worktree cleaned up.");
