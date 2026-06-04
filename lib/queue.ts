@@ -1,5 +1,5 @@
 ﻿import { createClaudeSession, type TurnResult } from "./claude-runner";
-import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect } from "./worktree";
+import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect, ensureRepoCloned } from "./worktree";
 
 import { broadcast } from "./sse-server";
 import { sendJobNotification } from "./notify";
@@ -111,6 +111,23 @@ export async function startJob(jobId: Id<"jobs">) {
     if (!project) { processing.delete(jobId); return; }
 
     await withRetry(() => convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running" }));
+
+    // Make sure the repo lives on THIS machine. When the UI is hosted remotely
+    // (e.g. the Vercel deploy) it can't clone onto the worker's disk, so the
+    // project may arrive with no usable localPath — clone it here on first run
+    // and persist the resolved path back to Convex.
+    const resolvedPath = ensureRepoCloned({
+      repo: project.repo,
+      localPath: project.localPath,
+      githubToken: project.githubToken,
+    });
+    if (resolvedPath !== project.localPath) {
+      log(jobId, `Cloned ${project.repo} to ${resolvedPath}`);
+      await withRetry(() =>
+        convex.mutation(api.projects.update, { id: job.projectId, localPath: resolvedPath })
+      ).catch(() => {});
+      project = { ...project, localPath: resolvedPath };
+    }
 
     // -- Continue an existing conversation -----------------------------------
     // Two cases land here: (1) the worker still holds a live session because the
