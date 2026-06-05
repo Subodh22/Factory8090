@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { X, Loader2, Lock, Search, ChevronDown, RefreshCw, FolderDown } from "lucide-react";
 import { toast } from "sonner";
 
-const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+const COLORS = ["#b86a39", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
 
 type GHRepo = { fullName: string; defaultBranch: string; private: boolean; description: string | null };
 
@@ -151,8 +151,8 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#111113] border border-[#27272a] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-[#27272a]">
+      <div className="bg-[#1b1613] border border-[#2e2722] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-[#2e2722]">
           <h2 className="text-sm font-semibold text-zinc-100">Add Project</h2>
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">
             <X className="w-4 h-4" />
@@ -186,7 +186,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => ghRepos.length && setShowDropdown((v) => !v)}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-[#0a0a0b] border border-[#27272a] rounded-md text-sm text-left transition-colors hover:border-zinc-600"
+                  className="w-full flex items-center justify-between px-3 py-2 bg-[#14100e] border border-[#2e2722] rounded-md text-sm text-left transition-colors hover:border-zinc-600"
                 >
                   {loadingRepos ? (
                     <span className="flex items-center gap-2 text-zinc-500">
@@ -206,9 +206,9 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                 </button>
 
                 {showDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#18181b] border border-[#27272a] rounded-lg shadow-xl z-10 overflow-hidden">
-                    <div className="p-2 border-b border-[#27272a]">
-                      <div className="flex items-center gap-2 px-2 py-1 bg-[#0a0a0b] rounded-md">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#221c18] border border-[#2e2722] rounded-lg shadow-xl z-10 overflow-hidden">
+                    <div className="p-2 border-b border-[#2e2722]">
+                      <div className="flex items-center gap-2 px-2 py-1 bg-[#14100e] rounded-md">
                         <Search className="w-3 h-3 text-zinc-500 shrink-0" />
                         <input
                           autoFocus
@@ -228,7 +228,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                             key={r.fullName}
                             type="button"
                             onClick={() => selectRepo(r)}
-                            className="w-full text-left px-3 py-2 hover:bg-[#27272a] transition-colors"
+                            className="w-full text-left px-3 py-2 hover:bg-[#2e2722] transition-colors"
                           >
                             <div className="flex items-center gap-2">
                               {r.private && <Lock className="w-3 h-3 text-zinc-500 shrink-0" />}
@@ -250,7 +250,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                 value={form.repo}
                 onChange={(e) => setForm({ ...form, repo: e.target.value })}
                 placeholder="org/repo"
-                className="bg-[#0a0a0b] border-[#27272a] text-zinc-100"
+                className="bg-[#14100e] border-[#2e2722] text-zinc-100"
               />
             )}
           </div>
@@ -262,7 +262,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="My App"
-              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100"
+              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
             />
           </div>
 
@@ -286,7 +286,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                   ? `Leave empty to auto-clone`
                   : "C:\\Users\\you\\projects\\my-app"
               }
-              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100"
+              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
             />
             <p className="text-[10px] text-zinc-600 mt-1">
               {form.localPath
@@ -301,7 +301,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
             <Input
               value={form.defaultBranch}
               onChange={(e) => setForm({ ...form, defaultBranch: e.target.value })}
-              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100"
+              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
             />
           </div>
 
@@ -317,7 +317,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setForm({ ...form, codemapHint: e.target.value })}
               rows={4}
               placeholder={`Describe where things live, e.g.:\n- src/auth/ — all auth logic\n- src/app/api/ — API routes\n- convex/ — database functions\n- Ignore: node_modules, dist, .next`}
-              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100 text-xs resize-none placeholder:text-zinc-700"
+              className="bg-[#14100e] border-[#2e2722] text-zinc-100 text-xs resize-none placeholder:text-zinc-700"
             />
             <p className="text-[10px] text-zinc-600 mt-1">
               Written to CLAUDE.md in the repo root — helps Claude find the right files without exploring everything
@@ -331,7 +331,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
               value={form.agentRules}
               onChange={(e) => setForm({ ...form, agentRules: e.target.value })}
               rows={3}
-              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100 text-xs resize-none"
+              className="bg-[#14100e] border-[#2e2722] text-zinc-100 text-xs resize-none"
             />
           </div>
 

@@ -44,7 +44,7 @@ function MiniTerminal({ jobId, isRunning }: MiniTerminalProps) {
   }, [output]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#080809] p-3 min-h-0 font-mono text-[10px]">
+    <div className="flex-1 overflow-y-auto bg-[#100c0a] p-3 min-h-0 font-mono text-[10px]">
       {output ? (
         <pre className="whitespace-pre-wrap leading-relaxed">
           {output.split("\n").map((raw, i) => {
@@ -109,14 +109,14 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
     : null;
 
   return (
-    <div className="flex flex-col bg-[#0d0d0f] border border-[#27272a] rounded-lg overflow-hidden" style={{ height: 320 }}>
+    <div className="flex flex-col bg-[#181310] border border-[#2e2722] rounded-lg overflow-hidden" style={{ height: 320 }}>
       {isRunning && (
         <div className="h-0.5 w-full bg-zinc-900 overflow-hidden relative flex-shrink-0">
           <style>{`@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}`}</style>
           <div className="absolute h-full w-1/3 bg-indigo-500" style={{ animation: "slide 2s linear infinite" }} />
         </div>
       )}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#27272a] flex-shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#2e2722] flex-shrink-0">
         <div className="flex gap-1.5">
           <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-green-500 animate-pulse" : job.status === "completed" ? "bg-green-700" : "bg-red-700"}`} />
           <div className="w-2 h-2 rounded-full bg-zinc-700" />
@@ -127,7 +127,7 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
           {projectName && (
             <span
               className="text-[9px] px-1 rounded"
-              style={{ color: projectColor ?? "#6366f1" }}
+              style={{ color: projectColor ?? "#b86a39" }}
             >
               {projectName}
             </span>
@@ -155,7 +155,7 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
       </div>
 
       {(job.branch || job.prUrl) && (
-        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-[#1a1a1d] flex-shrink-0">
+        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-[#241e1a] flex-shrink-0">
           {job.branch && (
             <span className="flex items-center gap-1 text-[10px] text-zinc-600">
               <GitBranch className="w-2.5 h-2.5" />

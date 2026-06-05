@@ -83,7 +83,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   return (
     <div
       ref={dropRef}
-      className="flex flex-col gap-3 p-4 bg-[#111113] border border-[#27272a] rounded-xl"
+      className="flex flex-col gap-3 p-4 bg-[#1b1613] border border-[#2e2722] rounded-xl"
       onDrop={onDrop}
       onDragOver={(e) => e.preventDefault()}
     >
@@ -123,7 +123,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         placeholder="Describe what you want to build or change…  (paste or drop files, Cmd+Enter to send)"
-        className="min-h-[100px] resize-none bg-[#0a0a0b] border-[#27272a] text-zinc-100 placeholder:text-zinc-700 focus-visible:ring-indigo-700 text-sm"
+        className="min-h-[100px] resize-none bg-[#14100e] border-[#2e2722] text-zinc-100 placeholder:text-zinc-700 focus-visible:ring-indigo-700 text-sm"
       />
 
       <div className="flex items-center justify-between">

@@ -24,7 +24,7 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-[#27272a]">
+      <div className="px-4 py-3 border-b border-[#2e2722]">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-zinc-400 tracking-widest uppercase">
             {projectId ? "Project Jobs" : "All Jobs"}
@@ -38,13 +38,13 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="divide-y divide-[#1a1a1e]">
+        <div className="divide-y divide-[#2e2722]">
           {sorted.map((job) => {
             const project = projectMap[job.projectId];
             return (
               <button
                 key={job._id}
-                className="w-full text-left px-4 py-3 hover:bg-[#111113] transition-colors group"
+                className="w-full text-left px-4 py-3 hover:bg-[#1b1613] transition-colors group"
                 onClick={() => onSelectJob(job._id)}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
@@ -58,7 +58,7 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
                   {!projectId && project && (
                     <span
                       className="px-1.5 py-0.5 rounded text-zinc-500"
-                      style={{ backgroundColor: project.color ? `${project.color}20` : "#1e1e22" }}
+                      style={{ backgroundColor: project.color ? `${project.color}20` : "#221c18" }}
                     >
                       {project.name}
                     </span>

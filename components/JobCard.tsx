@@ -72,7 +72,7 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
   return (
     <>
       <div
-        className="bg-[#111113] border border-[#27272a] rounded-lg p-3 cursor-pointer hover:border-indigo-700 transition-colors group"
+        className="bg-[#1b1613] border border-[#2e2722] rounded-lg p-3 cursor-pointer hover:border-indigo-700 transition-colors group"
         onClick={() => onSelect?.(job._id)}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -146,7 +146,7 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
           onClick={() => setShowRedoDialog(false)}
         >
           <div
-            className="bg-[#18181b] border border-zinc-700 rounded-xl p-5 w-[480px] max-w-[90vw] shadow-xl"
+            className="bg-[#221c18] border border-zinc-700 rounded-xl p-5 w-[480px] max-w-[90vw] shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold text-zinc-100 mb-4">Re-run job</h3>
