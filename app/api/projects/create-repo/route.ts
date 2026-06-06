@@ -28,6 +28,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status });
   }
 
+  // On Vercel (or any serverless host) the filesystem is read-only apart from an
+  // ephemeral /tmp, so we can't clone the repo onto disk here. The GitHub repo is
+  // already created above; defer the actual clone to the local worker, which does
+  // it lazily via ensureRepoCloned() into its own FACTORY_WORKSPACE on first job.
+  if (process.env.VERCEL) {
+    return NextResponse.json({
+      repo: repoInfo.fullName,
+      defaultBranch: repoInfo.defaultBranch,
+      htmlUrl: repoInfo.htmlUrl,
+      localPath: "", // worker clones into its own workspace by repo name
+    });
+  }
+
   const workspace = process.env.FACTORY_WORKSPACE ?? path.join(os.homedir(), "factory-workspace");
   const repoName = repoInfo.fullName.split("/")[1];
   const localPath = path.join(workspace, repoName);
