@@ -150,24 +150,24 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#14100e] border border-[#2e2722] rounded-lg overflow-hidden">
+    <div className="flex flex-col h-full max-w-[840px] mx-auto w-full bg-ink border-4 border-ink brutal-shadow-muted overflow-hidden text-[#cfe8cf]">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 h-9 border-b border-[#2e2722] flex-shrink-0">
-        <TerminalIcon className="w-3.5 h-3.5 text-indigo-400" />
-        <span className="text-xs font-medium text-zinc-300">{project.name}</span>
-        <span className="text-[10px] text-zinc-600 truncate max-w-[40%]" title={project.localPath}>
+      <div className="flex items-center gap-2 px-3 h-10 border-b-2 border-[#2a2722] flex-shrink-0">
+        <TerminalIcon className="w-3.5 h-3.5 text-[#3bd16f]" />
+        <span className="font-mono text-xs font-bold text-[#cfe8cf]">{project.name}</span>
+        <span className="font-mono text-[10px] text-[#6b8a6b] truncate max-w-[40%]" title={project.localPath}>
           {project.localPath}
         </span>
         <span
-          className={`ml-auto flex items-center gap-1 text-[10px] ${connected ? "text-emerald-400" : "text-zinc-600"}`}
+          className={`ml-auto flex items-center gap-1 font-mono text-[10px] ${connected ? "text-[#3bd16f]" : "text-[#6b8a6b]"}`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          <span className={`w-1.5 h-1.5 ${connected ? "bg-[#3bd16f]" : "bg-[#6b8a6b]"}`} />
           {connected ? "connected" : "offline"}
         </span>
         {running && (
           <button
             onClick={kill}
-            className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-red-400 hover:text-red-300 border border-red-900 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-0.5 font-mono text-[10px] text-[#ff8a7a] hover:text-white border border-[#d6210f] transition-colors"
             title="Stop (Ctrl+C)"
           >
             <Square className="w-2.5 h-2.5" /> stop
@@ -175,7 +175,7 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
         )}
         <button
           onClick={() => setEntries([])}
-          className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 font-mono text-[10px] text-[#6b8a6b] hover:text-[#cfe8cf] border border-[#6b8a6b] transition-colors"
           title="Clear"
         >
           <Trash2 className="w-2.5 h-2.5" /> clear
@@ -184,15 +184,15 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
 
       {/* Output */}
       <div
-        className="flex-1 overflow-y-auto px-3 py-2 font-mono text-xs leading-relaxed"
+        className="flex-1 overflow-y-auto px-4 py-3 font-mono text-[13px] leading-[1.7]"
         onClick={() => inputRef.current?.focus()}
       >
         {entries.map((e, i) => {
           if (e.kind === "cmd") {
             return (
               <div key={i} className="whitespace-pre-wrap break-words">
-                <span className="text-indigo-400">$ </span>
-                <span className="text-zinc-100">{e.text}</span>
+                <span className="text-[#3bd16f]">$ </span>
+                <span className="text-[#e7e4dc]">{e.text}</span>
               </div>
             );
           }
@@ -201,22 +201,22 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
           }
           if (e.kind === "exit") {
             return (
-              <div key={i} className={`text-[10px] ${e.code === 0 ? "text-zinc-600" : "text-red-500"}`}>
+              <div key={i} className={`text-[11px] ${e.code === 0 ? "text-[#6b8a6b]" : "text-red-500"}`}>
                 [exit {e.code}]
               </div>
             );
           }
           if (e.kind === "info") {
-            return <div key={i} className="text-[10px] text-zinc-600">{e.text}</div>;
+            return <div key={i} className="text-[11px] text-[#6b8a6b]">{e.text}</div>;
           }
-          return <pre key={i} className="whitespace-pre-wrap break-words text-zinc-300 font-mono">{e.text}</pre>;
+          return <pre key={i} className="whitespace-pre-wrap break-words text-[#cfe8cf] font-mono">{e.text}</pre>;
         })}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
-      <div className="flex items-center gap-2 px-3 h-10 border-t border-[#2e2722] flex-shrink-0">
-        <span className="text-indigo-400 font-mono text-xs">$</span>
+      <div className="flex items-center gap-2 px-4 h-11 border-t-2 border-[#2a2722] flex-shrink-0">
+        <span className="text-[#3bd16f] font-mono text-[13px]">$</span>
         <input
           ref={inputRef}
           value={input}
@@ -227,12 +227,12 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
           autoCapitalize="off"
           autoComplete="off"
           placeholder={connected ? (running ? "running… (Ctrl+C to stop)" : "type a command and press Enter") : "connecting to worker…"}
-          className="flex-1 bg-transparent outline-none font-mono text-xs text-zinc-100 placeholder:text-zinc-700 disabled:opacity-50"
+          className="flex-1 bg-transparent outline-none font-mono text-[13px] text-[#e7e4dc] placeholder:text-[#6b8a6b] disabled:opacity-50"
         />
         <button
           onClick={run}
           disabled={!connected || running || !input.trim()}
-          className="flex items-center gap-1 text-zinc-600 hover:text-zinc-300 disabled:opacity-30 disabled:hover:text-zinc-600 transition-colors"
+          className="flex items-center gap-1 text-[#6b8a6b] hover:text-[#cfe8cf] disabled:opacity-30 transition-colors"
           title="Run (Enter)"
         >
           <CornerDownLeft className="w-3.5 h-3.5" />

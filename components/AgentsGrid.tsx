@@ -19,13 +19,15 @@ function parseAgentLine(raw: string): { type: LineType; text: string } {
 }
 
 function agentLineClass(type: LineType): string {
+  // The mini-terminal keeps a dark ink slab, so these use explicit light colours
+  // (not the inverted zinc ramp, which would render dark-on-dark).
   switch (type) {
     case "tool":    return "text-cyan-400";
     case "bash":    return "text-amber-300";
-    case "stderr":  return "text-zinc-700";
-    case "factory": return "text-indigo-400";
+    case "stderr":  return "text-[#6b8a6b]";
+    case "factory": return "text-[#3bd16f]";
     case "error":   return "text-red-400";
-    case "text":    return "text-zinc-300";
+    case "text":    return "text-[#cfe8cf]";
   }
 }
 
@@ -44,7 +46,7 @@ function MiniTerminal({ jobId, isRunning }: MiniTerminalProps) {
   }, [output]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#100c0a] p-3 min-h-0 font-mono text-[10px]">
+    <div className="flex-1 overflow-y-auto bg-ink p-3 min-h-0 font-mono text-[10px]">
       {output ? (
         <pre className="whitespace-pre-wrap leading-relaxed">
           {output.split("\n").map((raw, i) => {
@@ -55,11 +57,11 @@ function MiniTerminal({ jobId, isRunning }: MiniTerminalProps) {
             );
           })}
           {isRunning && (
-            <span className="inline-block w-1.5 h-3 bg-cyan-400 animate-pulse ml-0.5 align-middle opacity-60" />
+            <span className="inline-block w-1.5 h-3 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60" />
           )}
         </pre>
       ) : (
-        <p className="text-zinc-700 italic">
+        <p className="text-[#6b8a6b] italic">
           {isRunning ? "Starting…" : "No output"}
         </p>
       )}
@@ -109,25 +111,20 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
     : null;
 
   return (
-    <div className="flex flex-col bg-[#181310] border border-[#2e2722] rounded-lg overflow-hidden" style={{ height: 320 }}>
+    <div className="flex flex-col bg-ink border-[3px] border-ink brutal-shadow-sm overflow-hidden" style={{ height: 320 }}>
       {isRunning && (
-        <div className="h-0.5 w-full bg-zinc-900 overflow-hidden relative flex-shrink-0">
+        <div className="h-1 w-full bg-[#2a2722] overflow-hidden relative flex-shrink-0">
           <style>{`@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}`}</style>
-          <div className="absolute h-full w-1/3 bg-indigo-500" style={{ animation: "slide 2s linear infinite" }} />
+          <div className="absolute h-full w-1/3 bg-[#3bd16f]" style={{ animation: "slide 2s linear infinite" }} />
         </div>
       )}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#2e2722] flex-shrink-0">
-        <div className="flex gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-green-500 animate-pulse" : job.status === "completed" ? "bg-green-700" : "bg-red-700"}`} />
-          <div className="w-2 h-2 rounded-full bg-zinc-700" />
-          <div className="w-2 h-2 rounded-full bg-zinc-700" />
-        </div>
-        <div className="flex-1 mx-2 min-w-0">
-          <span className="text-[10px] text-zinc-500 truncate block">{job.title}</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b-[3px] border-ink bg-concrete flex-shrink-0">
+        <div className="flex-1 mr-2 min-w-0">
+          <span className="text-[11px] font-bold uppercase text-ink truncate block leading-tight">{job.title}</span>
           {projectName && (
             <span
-              className="text-[9px] px-1 rounded"
-              style={{ color: projectColor ?? "#b86a39" }}
+              className="font-data text-[9px] uppercase"
+              style={{ color: projectColor ?? "#6b675f" }}
             >
               {projectName}
             </span>
@@ -135,7 +132,7 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {elapsed !== null && (
-            <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+            <span className="flex items-center gap-1 font-data text-[10px] text-muted">
               <Clock className="w-2.5 h-2.5" />{elapsed}s
             </span>
           )}
@@ -144,7 +141,7 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
               onClick={handleStop}
               disabled={stopping}
               title="Stop this agent"
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-red-950/40 border border-red-900/50 text-red-300 hover:text-red-200 hover:border-red-700 disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[10px] uppercase border-2 border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete disabled:opacity-40 transition-colors"
             >
               <Square className="w-2.5 h-2.5 fill-current" />
               {stopping ? "Stopping…" : "Stop"}
@@ -155,16 +152,16 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
       </div>
 
       {(job.branch || job.prUrl) && (
-        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-[#241e1a] flex-shrink-0">
+        <div className="flex items-center gap-3 px-3 py-1.5 border-b-2 border-[#2a2722] bg-ink flex-shrink-0">
           {job.branch && (
-            <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+            <span className="flex items-center gap-1 font-data text-[10px] text-[#6b8a6b]">
               <GitBranch className="w-2.5 h-2.5" />
               {job.branch}
             </span>
           )}
           {job.prUrl && (
             <a href={job.prUrl} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-300">
+              className="flex items-center gap-1 font-data text-[10px] text-[#cfe8cf] hover:underline">
               <ExternalLink className="w-2.5 h-2.5" />PR #{job.prNumber}
             </a>
           )}
@@ -174,8 +171,8 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
       <MiniTerminal jobId={jobId} isRunning={isRunning} />
 
       {job.error && (
-        <div className="px-3 py-2 border-t border-red-900/50 bg-red-950/20 flex-shrink-0">
-          <p className="text-[10px] text-red-300 font-mono truncate">{job.error}</p>
+        <div className="px-3 py-2 border-t-2 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
+          <p className="text-[10px] text-[#ff8a7a] font-mono truncate">{job.error}</p>
         </div>
       )}
     </div>
@@ -228,24 +225,20 @@ export function AgentsGrid({ projectId }: Props) {
   const showProjectTag = !projectId;
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex flex-wrap items-center gap-1.5 mb-4 flex-shrink-0">
+    <div className="h-full flex flex-col max-w-[840px] mx-auto w-full">
+      <div className="flex flex-wrap items-center gap-2 mb-5 flex-shrink-0">
         {FILTERS.map((f) => {
           const selected = filter === f.key;
           return (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
-                selected
-                  ? "bg-indigo-950 border-indigo-700 text-indigo-300"
-                  : "bg-[#0d0d0f] border-[#27272a] text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
+              className={`flex items-center gap-1.5 px-2.5 py-1 font-data text-[11px] uppercase border-2 border-ink transition-colors ${
+                selected ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"
               }`}
             >
               {f.label}
-              <span className={`text-[9px] tabular-nums ${selected ? "text-indigo-400" : "text-zinc-600"}`}>
-                {counts[f.key]}
-              </span>
+              <span className="tabular-nums">{counts[f.key]}</span>
             </button>
           );
         })}
@@ -253,14 +246,14 @@ export function AgentsGrid({ projectId }: Props) {
 
       {displayJobs.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center">
-          <div className="w-12 h-12 rounded-full border border-zinc-800 flex items-center justify-center">
+          <div className="w-14 h-14 border-[3px] border-ink flex items-center justify-center">
             <span className="text-xl">⚡</span>
           </div>
-          <p className="text-sm text-zinc-500">
+          <p className="font-display uppercase text-sm text-ink">
             {filter === "all" ? "No agents running" : `No ${activeFilter.label.toLowerCase()} agents`}
           </p>
           {filter === "all" && (
-            <p className="text-xs text-zinc-700">Queue some jobs and click Run All to start parallel execution</p>
+            <p className="font-data text-[11px] uppercase text-muted">Queue some jobs and click Run to start parallel execution</p>
           )}
         </div>
       ) : (
