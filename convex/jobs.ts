@@ -169,11 +169,11 @@ export const listMessages = query({
 export const appendOutput = mutation({
   args: { jobId: v.id("jobs"), text: v.string() },
   handler: async (ctx, { jobId, text }) => {
+    // Append-only: each chunk is one row. The UI reconstructs the log from these
+    // via getOutput. We deliberately do NOT also accumulate a `job.output` string
+    // — patching a growing field on every chunk re-reads and re-writes the whole
+    // log each time (O(N²) bandwidth) and nothing reads that field.
     await ctx.db.insert("outputChunks", { jobId, text, ts: Date.now() });
-    const job = await ctx.db.get(jobId);
-    if (job) {
-      await ctx.db.patch(jobId, { output: (job.output ?? "") + text });
-    }
   },
 });
 
