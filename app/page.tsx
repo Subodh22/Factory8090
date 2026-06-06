@@ -14,7 +14,6 @@ import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { EnvPanel } from "@/components/EnvPanel";
 import { JobNotifications } from "@/components/JobNotifications";
-import { QuickChat } from "@/components/QuickChat";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, LogOut, Menu, X } from "lucide-react";
@@ -85,7 +84,6 @@ export default function Home() {
   const TAB_LABELS: Record<string, string> = {
     board: "Kanban Board",
     agents: "Agents",
-    "quick-chat": "Chat",
     chat: "New Job",
     create: "Create Project",
     env: "Env",
@@ -244,7 +242,7 @@ export default function Home() {
           <div className="border-b-4 border-ink flex-shrink-0 bg-concrete sticky top-0 z-[5]">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-0 rounded-none w-full justify-start overflow-x-auto no-scrollbar">
-                {["board", "agents", "quick-chat", "chat", "create", "env", "terminal"].map((t) => (
+                {["board", "agents", "chat", "create", "env", "terminal"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
@@ -273,19 +271,6 @@ export default function Home() {
 
             {tab === "agents" && (
               <AgentsGrid projectId={projectId} />
-            )}
-
-            {tab === "quick-chat" && project && (
-              <div className="h-full max-h-[calc(100vh-200px)]">
-                <QuickChat localPath={project.localPath} projectName={project.name} />
-              </div>
-            )}
-
-            {tab === "quick-chat" && !project && (
-              <div className="flex flex-col items-center justify-center h-full gap-3">
-                <p className="font-display uppercase text-sm text-ink">Select a project to chat</p>
-                <p className="font-data text-[11px] uppercase text-muted">Choose a repo from the top bar to get started</p>
-              </div>
             )}
 
             {tab === "chat" && projectId && (
