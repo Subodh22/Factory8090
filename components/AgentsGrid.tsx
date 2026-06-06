@@ -206,7 +206,7 @@ type AgentFilter = "all" | "running" | "done" | "failed" | "cancelled";
 
 const FILTERS: { key: AgentFilter; label: string; statuses: string[] }[] = [
   { key: "all",       label: "All",       statuses: [] },
-  { key: "running",   label: "Running",   statuses: ["running", "queued", "waiting_for_input"] },
+  { key: "running",   label: "Running",   statuses: ["running", "queued"] },
   { key: "done",      label: "Done",      statuses: ["completed"] },
   { key: "failed",    label: "Failed",    statuses: ["failed"] },
   { key: "cancelled", label: "Cancelled", statuses: ["cancelled"] },
@@ -218,7 +218,7 @@ export function AgentsGrid({ projectId }: Props) {
   const projectMap = Object.fromEntries(projects.map((p) => [p._id, p]));
   const [filter, setFilter] = useState<AgentFilter>("all");
 
-  const isActive = (s: string) => s === "running" || s === "queued" || s === "waiting_for_input";
+  const isActive = (s: string) => s === "running" || s === "queued";
 
   // Active agents float to the top; finished ones sort by most-recently completed.
   const sortedJobs = [...jobs].sort((a, b) => {
