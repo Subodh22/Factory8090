@@ -136,8 +136,9 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   // Use SSE output while live (fast path), Convex output otherwise (source of truth)
   const output = (streamActive && sseOutput !== null) ? sseOutput : convexOutput;
-  // Chat input is available whenever there is a live agent to talk to.
-  const canChat = isRunning || isWaiting;
+  // Chat is available on any started job: running/waiting talk to the live
+  // session; a finished job is resumed by its saved session id on first reply.
+  const canChat = !!job && !isPending;
 
   // Track when output last changed so we can show silence duration
   const lastOutputAt = useRef(Date.now());
@@ -527,6 +528,11 @@ export function JobDetail({ jobId, onRedo }: Props) {
               Message will be delivered when Claude finishes this turn
             </p>
           )}
+          {isFinished && (
+            <p className="font-data text-[10px] uppercase text-muted mb-2">
+              Continue the conversation — resumes this job&apos;s session
+            </p>
+          )}
           {attachedFiles.length > 0 && (
             <div className="flex gap-2 mb-2 flex-wrap">
               {attachedFiles.map((src, i) => (
@@ -552,7 +558,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <input
               value={reply}
               onChange={(e) => setReply(e.target.value)}
-              placeholder={isWaiting ? "Reply to Claude..." : "Queue a message..."}
+              placeholder={isWaiting ? "Reply to Claude..." : isRunning ? "Queue a message..." : "Message Claude..."}
               className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
               autoFocus={isWaiting}
             />
