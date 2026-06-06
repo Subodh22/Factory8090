@@ -119,7 +119,12 @@ async function sweepStuck() {
 }
 
 rehydrate().then(() => tick());
-const interval = setInterval(tick, 200);
+// Poll interval. Each tick runs several Convex queries, so a tight interval
+// burns through function-call quota fast (200ms ≈ 25 calls/s ≈ tens of millions
+// of calls/day — well over the Convex free tier). 2s matches the documented
+// cadence and is plenty responsive for job pickup. Override with WORKER_POLL_MS.
+const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
+const interval = setInterval(tick, POLL_MS);
 setInterval(sweepStuck, 60_000); // check for stuck jobs every minute
 
 process.on("SIGINT", () => {
