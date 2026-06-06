@@ -62,6 +62,7 @@
   --color-secondary: var(--secondary);
   --color-ink: var(--ink);
   --color-concrete: var(--concrete);
+  --color-concrete-2: var(--concrete-2);
   --color-paper: var(--paper);
   --font-sans: var(--font-archivo);
   --font-mono: var(--font-jetbrains);
