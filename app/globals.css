@@ -1,44 +1,54 @@
 @import "tailwindcss";
 
-/* ───────────────────────── Boutique warm-dark palette ─────────────────────────
-   A calmer, classier reskin. Cold pure-black + generic AI-indigo are swapped for
-   warm espresso charcoals and a muted terracotta accent, with a serif display
-   face for the wordmark and section titles.
+/* ───────────────────────── Grid-Cast: concrete brutalist theme ─────────────────────────
+   A light, high-contrast "concrete grid" reskin. Warm-dark espresso is swapped for
+   a poured-concrete surface ruled with a faint grid, hard ink borders, offset drop
+   shadows, and an industrial type stack (Archivo / Archivo Black / Space Mono /
+   JetBrains Mono). The accent is ink — black fills mark anything "active".
 
-   The trick that keeps this cohesive without touching every component: we remap
-   Tailwind's `zinc` (neutral) and `indigo` (accent) scales below, so the
-   utility classes already sprinkled across the app pick up the new tones for
-   free. */
+   The cohesion trick is unchanged: we remap Tailwind's `zinc` (neutral) and
+   `indigo` (accent) scales below so the utility classes already sprinkled across
+   the app pick up the new tones for free. The ramp is INVERTED versus a dark
+   theme — low numbers are ink, high numbers are paper — so `text-zinc-100`
+   becomes near-black text and `bg-zinc-900` becomes a paper card automatically. */
 
 :root {
-  --background: #14100e;
-  --foreground: #f3ece4;
-  --card: #1b1613;
-  --card-foreground: #f3ece4;
-  --popover: #1b1613;
-  --popover-foreground: #f3ece4;
-  --primary: #b86a39;
-  --primary-foreground: #fff7f0;
-  --secondary: #221c18;
-  --secondary-foreground: #b3a597;
-  --muted: #1b1613;
-  --muted-foreground: #8a7d70;
-  --accent: #221c18;
-  --accent-foreground: #f3ece4;
-  --destructive: #d9544a;
-  --destructive-foreground: #fff7f0;
-  --border: #2e2722;
-  --input: #2e2722;
-  --ring: #b86a39;
-  --radius: 0.75rem;
+  --concrete: #cfccc4;
+  --concrete-2: #c4c0b7;
+  --grid: #bcb8af;
+  --ink: #111111;
+  --paper: #ffffff;
+  --muted: #6b675f;
 
-  /* Status colors — muted so they sit calmly on warm charcoal */
-  --pending: #8a7d70;
-  --queued: #d99a4e;
-  --running: #c87f4a;
-  --completed: #7fa66a;
-  --failed: #d9544a;
-  --cancelled: #6b5f54;
+  --background: var(--concrete);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--concrete);
+  --secondary: var(--concrete-2);
+  --secondary-foreground: var(--ink);
+  --muted-bg: var(--concrete-2);
+  --muted-foreground: var(--muted);
+  --accent: var(--ink);
+  --accent-foreground: var(--concrete);
+  --destructive: #d6210f;
+  --destructive-foreground: #ffffff;
+  --border: var(--ink);
+  --input: var(--ink);
+  --ring: var(--ink);
+  /* Brutalism: square corners. */
+  --radius: 0rem;
+
+  /* Status colors — the only spots of colour, kept saturated like signage. */
+  --pending: #6b675f;
+  --queued: #b8860b;
+  --running: #1f7a3d;
+  --completed: #1f7a3d;
+  --failed: #d6210f;
+  --cancelled: #6b675f;
 }
 
 @theme inline {
@@ -46,58 +56,93 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-border: var(--border);
-  --color-muted: var(--muted);
+  --color-muted: var(--muted-bg);
   --color-muted-foreground: var(--muted-foreground);
   --color-primary: var(--primary);
   --color-secondary: var(--secondary);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-serif: var(--font-fraunces);
+  --color-ink: var(--ink);
+  --color-concrete: var(--concrete);
+  --color-paper: var(--paper);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-jetbrains);
+  --font-display: var(--font-archivo-black);
+  --font-data: var(--font-space-mono);
 }
 
-/* Warm-tinted neutral ramp — overrides Tailwind's cool `zinc`, so every
-   text-zinc-* / bg-zinc-* / border-zinc-* in the app turns warm. */
+/* Inverted neutral ramp — low numbers ink, high numbers paper. Every
+   text-zinc-* / bg-zinc-* / border-zinc-* in the app flips to the concrete
+   theme: light text classes become dark ink, dark surface classes become paper. */
 @theme {
-  --color-zinc-50:  #faf6f1;
-  --color-zinc-100: #f3ece4;
-  --color-zinc-200: #e7ded4;
-  --color-zinc-300: #d3c7bb;
-  --color-zinc-400: #ad9f91;
-  --color-zinc-500: #8a7d70;
-  --color-zinc-600: #6b5f54;
-  --color-zinc-700: #4d433b;
-  --color-zinc-800: #362e28;
-  --color-zinc-900: #221c18;
-  --color-zinc-950: #161210;
+  --color-zinc-50:  #15120f;
+  --color-zinc-100: #15120f;
+  --color-zinc-200: #2a2722;
+  --color-zinc-300: #3c3933;
+  --color-zinc-400: #56524b;
+  --color-zinc-500: #6b675f;
+  --color-zinc-600: #837e75;
+  --color-zinc-700: #a39e94;
+  --color-zinc-800: #c4c0b7;
+  --color-zinc-900: #ffffff;
+  --color-zinc-950: #f4f2ec;
 
-  /* Terracotta / clay accent — overrides `indigo` everywhere. */
-  --color-indigo-300: #e6b18c;
-  --color-indigo-400: #d99a6a;
-  --color-indigo-500: #c87f4a;
-  --color-indigo-600: #b86a39;
-  --color-indigo-700: #9c5530;
-  --color-indigo-800: #6e3c23;
-  --color-indigo-900: #4a2a1a;
-  --color-indigo-950: #2c1910;
+  /* Accent = ink. The `indigo-*` scale (the app's old accent) collapses to
+     near-black so "active"/highlight elements read as solid black fills. */
+  --color-indigo-300: #56524b;
+  --color-indigo-400: #2a2722;
+  --color-indigo-500: #111111;
+  --color-indigo-600: #111111;
+  --color-indigo-700: #000000;
+  --color-indigo-800: #000000;
+  --color-indigo-900: #c4c0b7;
+  --color-indigo-950: #e7e4dc;
 }
 
 * {
-  border-color: var(--border);
+  border-color: var(--ink);
   box-sizing: border-box;
 }
 
+html, body { height: 100%; }
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--concrete);
+  color: var(--ink);
+  font-family: var(--font-archivo), "Archivo", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* The signature ruled-concrete grid. */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 26px 26px;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::selection { background: var(--ink); color: var(--concrete); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4d433b; }
+::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--concrete); }
+::-webkit-scrollbar-thumb:hover { background: #000; }
 
 /* Hide scrollbar but keep scrolling — used by the responsive header strip */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ───────── Brutalist helpers ───────── */
+
+/* Faint concrete grid overlay for nested surfaces (cards, composer). */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+/* Hard offset drop shadow — the brutalist "lifted slab" look. */
+.brutal-shadow { box-shadow: 9px 9px 0 var(--ink); }
+.brutal-shadow-sm { box-shadow: 5px 5px 0 var(--ink); }
+.brutal-shadow-muted { box-shadow: 9px 9px 0 var(--muted); }
+
+/* Press-to-stick interaction for primary buttons. */
+.brutal-press { transition: transform .1s ease, box-shadow .1s ease; }
+.brutal-press:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--muted); }
+.brutal-press:active { transform: translate(2px, 2px); box-shadow: none; }
