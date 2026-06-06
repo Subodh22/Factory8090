@@ -61,6 +61,20 @@ export async function createRepo(
   };
 }
 
+export async function createPR(
+  token: string,
+  owner: string,
+  repo: string,
+  head: string,
+  base: string,
+  title: string,
+  body: string
+): Promise<{ url: string; number: number }> {
+  const octokit = makeOctokit(token);
+  const { data } = await octokit.pulls.create({ owner, repo, head, base, title, body });
+  return { url: data.html_url, number: data.number };
+}
+
 export async function getRepoInfo(token: string, owner: string, repo: string) {
   const octokit = makeOctokit(token);
   const { data } = await octokit.repos.get({ owner, repo });

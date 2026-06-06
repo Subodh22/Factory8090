@@ -179,3 +179,97 @@ export function commitAndPushDirect(worktreePath: string, message: string, defau
     throw new Error(`push to ${defaultBranch} failed: ${push.stderr}`);
   }
 }
+
+// ── Delegator: epic integration branch ─────────────────────────────────────
+
+/**
+ * Ensure the epic's integration branch `epic/<epicId>` exists (branched off the
+ * latest default branch) and has a dedicated worktree at
+ * `<repo>/.worktrees/epic-<epicId>` checked out on it. Child tasks branch off
+ * this branch and their results are merged back into it; nothing is pushed until
+ * the epic finalizes. Idempotent — safe to call again after a worker restart.
+ */
+export function ensureEpicWorktree(
+  repoPath: string,
+  epicId: string,
+  defaultBranch: string
+): { worktreePath: string; branch: string } {
+  const normalizedRepo = resolveRepo(repoPath);
+  if (!repoExists(normalizedRepo)) {
+    throw new Error(`Repo path does not exist: ${normalizedRepo}`);
+  }
+  const branch = `epic/${epicId}`;
+  const worktreePath = path.join(normalizedRepo, ".worktrees", `epic-${epicId}`);
+
+  const branchExists = git(["rev-parse", "--verify", branch], normalizedRepo).status === 0;
+  if (!branchExists) {
+    // Start from the freshest default tip. Prefer origin/<default> (after a
+    // fetch) so the epic doesn't build on a stale local default; fall back to
+    // the local branch when there's no usable remote.
+    git(["fetch", "origin", defaultBranch], normalizedRepo);
+    const hasRemote = git(["rev-parse", "--verify", `origin/${defaultBranch}`], normalizedRepo).status === 0;
+    const startPoint = hasRemote ? `origin/${defaultBranch}` : defaultBranch;
+    const r = git(["branch", branch, startPoint], normalizedRepo);
+    if (r.status !== 0) throw new Error(`create epic branch failed: ${r.stderr || r.stdout}`);
+  }
+
+  if (!repoExists(worktreePath)) {
+    try {
+      fs.mkdirSync(path.join(normalizedRepo, ".worktrees"), { recursive: true });
+    } catch { /* dir already exists */ }
+    const r = git(["worktree", "add", worktreePath, branch], normalizedRepo);
+    if (r.status !== 0 && !/already/.test(r.stderr)) {
+      throw new Error(`epic worktree add failed: ${r.stderr || r.stdout}`);
+    }
+  }
+  return { worktreePath, branch };
+}
+
+/** Commit all changes on the current worktree branch. No push, no rebase.
+ *  Returns false when there was nothing to commit. */
+export function commitOnly(worktreePath: string, message: string): boolean {
+  git(["add", "-A"], worktreePath);
+  const commit = git(["commit", "-m", message], worktreePath);
+  if (commit.status !== 0) {
+    if (commit.stdout.includes("nothing to commit")) return false;
+    throw new Error(`git commit failed: ${commit.stderr || commit.stdout}`);
+  }
+  return true;
+}
+
+/** Merge a child branch into the epic branch checked out at `epicWorktreePath`.
+ *  Aborts and throws on conflict so the epic branch stays clean. Callers
+ *  serialize this per-epic (see withEpicLock) so concurrent children don't race. */
+export function mergeIntoBranch(epicWorktreePath: string, childBranch: string, message: string) {
+  const r = git(["merge", "--no-ff", "-m", message, childBranch], epicWorktreePath);
+  if (r.status !== 0) {
+    git(["merge", "--abort"], epicWorktreePath);
+    throw new Error(`merge of ${childBranch} failed (conflict): ${r.stderr || r.stdout}`);
+  }
+}
+
+/** Push a local branch to origin under the same name. */
+export function pushBranch(worktreePath: string, branch: string) {
+  const r = git(["push", "origin", `${branch}:${branch}`], worktreePath);
+  if (r.status !== 0) {
+    throw new Error(`push of ${branch} failed: ${r.stderr || r.stdout}`);
+  }
+}
+
+/** Push the epic branch's contents directly onto the default branch — the
+ *  tokenless fallback when no PR can be opened. */
+export function pushBranchToDefault(epicWorktreePath: string, defaultBranch: string) {
+  const r = git(["push", "origin", `HEAD:${defaultBranch}`], epicWorktreePath);
+  if (r.status !== 0) {
+    throw new Error(`push to ${defaultBranch} failed: ${r.stderr || r.stdout}`);
+  }
+}
+
+/** Delete a local branch (used to tidy up an epic branch after finalize). */
+export function deleteBranch(repoPath: string, branch: string) {
+  try {
+    git(["branch", "-D", branch], resolveRepo(repoPath));
+  } catch {
+    // best-effort cleanup
+  }
+}

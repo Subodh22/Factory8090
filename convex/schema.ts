@@ -25,8 +25,16 @@ export default defineSchema({
       v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled"),
-      v.literal("waiting_for_input")
+      v.literal("waiting_for_input"),
+      // An epic that has been planned and is now supervising its child tasks.
+      // Deliberately NOT "running" so the worker's stuck-sweep never requeues it.
+      v.literal("delegating")
     ),
+    // Delegator: an "epic" job is decomposed by the planner into "task" children;
+    // a plain job (the default, field absent) runs exactly as before.
+    kind: v.optional(v.union(v.literal("epic"), v.literal("task"))),
+    // For a "task" child, the epic job it belongs to.
+    parentJobId: v.optional(v.id("jobs")),
     // Legacy field from the old Convex-backed chat — chat is now ephemeral and
     // never writes this, but old job docs may still carry it, so keep it optional.
     lastUserMessageAt: v.optional(v.number()),
@@ -51,7 +59,8 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_status", ["status"])
-    .index("by_project_status", ["projectId", "status"]),
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_parent", ["parentJobId"]),
 
   // Vestigial: chat is now ephemeral (streamed over SSE, never persisted). This
   // table is kept only so any rows written by the old Convex-backed chat still

@@ -1,5 +1,6 @@
 ﻿import { createClaudeSession } from "./claude-runner";
-import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect, ensureRepoCloned } from "./worktree";
+import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect, ensureRepoCloned, ensureEpicWorktree, commitOnly, mergeIntoBranch } from "./worktree";
+import { planEpic } from "./delegator";
 
 import { broadcast, broadcastChat, registerReplyHandler } from "./sse-server";
 import { sendJobNotification } from "./notify";
@@ -60,6 +61,14 @@ const processing = new Set<string>();
 // still alive (status: waiting_for_input, or a finished job we just resumed).
 // Chat replies arrive over HTTP (POST /reply/:jobId) and are pushed onto this
 // context's queue — nothing about the chat is persisted to Convex.
+// When a job is a delegated child task, this carries the epic branch it commits
+// into. Absent for plain jobs (they push straight to the default branch).
+interface ChildContext {
+  parentJobId: Id<"jobs">;
+  epicBranch: string;
+  epicWorktreePath: string;
+}
+
 interface LiveContext {
   worktreePath: string;
   branch: string;
@@ -68,8 +77,21 @@ interface LiveContext {
   title?: string;
   busy: boolean;                                  // a turn is currently draining
   queue: { text: string; images: string[] }[];   // replies waiting to be sent
+  child?: ChildContext;                           // set when this is a delegated child
 }
 const liveContext = new Map<string, LiveContext>();
+
+// Serialize the merge-into-epic step per epic so concurrent child tasks don't
+// race on the shared integration branch. Single worker process → an in-memory
+// promise chain is a correct mutex. Only the git merge is serialized; the
+// children's Claude work still runs fully in parallel.
+const epicLocks = new Map<string, Promise<unknown>>();
+function withEpicLock<T>(epicId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = epicLocks.get(epicId) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  epicLocks.set(epicId, next.catch(() => {}));
+  return next;
+}
 
 // Jobs the user asked to stop mid-flight. Checked after each turn so we tear
 // the agent down instead of overwriting the "cancelled" status with completed/failed.
@@ -144,6 +166,27 @@ export async function startJob(jobId: Id<"jobs">) {
       project = { ...project, localPath: resolvedPath };
     }
 
+    // -- Epic: plan & split, then hand off to the scheduler -------------------
+    if (job.kind === "epic") {
+      // Guard against re-planning (e.g. a requeue after the plan already landed).
+      if (!job.delegatorPlan) {
+        await planEpic(convex, { _id: jobId, title: job.title, prompt: job.prompt, projectId: job.projectId }, project);
+      }
+      processing.delete(jobId);
+      return;
+    }
+
+    // -- Child task: base off (and merge into) the epic's integration branch ---
+    let baseBranch = project.defaultBranch;
+    let childCtx: ChildContext | undefined;
+    const isChild = !!job.parentJobId;
+    if (job.parentJobId) {
+      const parent = await withRetry(() => convex.query(api.jobs.get, { id: job.parentJobId! }));
+      const epic = ensureEpicWorktree(project.localPath, job.parentJobId, project.defaultBranch);
+      baseBranch = parent?.branch ?? epic.branch;
+      childCtx = { parentJobId: job.parentJobId, epicBranch: epic.branch, epicWorktreePath: epic.worktreePath };
+    }
+
     // -- New session ----------------------------------------------------------
     // Baseline for draining mid-run user messages: anything sent after this
     // point (during worktree setup or the first turn) gets delivered below.
@@ -161,7 +204,7 @@ export async function startJob(jobId: Id<"jobs">) {
     } else {
       log(jobId, `Repo: ${project.localPath}`);
       log(jobId, "Creating git worktreeâ€¦");
-      const wt = createWorktree(project.localPath, jobId, project.defaultBranch);
+      const wt = createWorktree(project.localPath, jobId, baseBranch);
       worktreePath = wt.worktreePath;
       branch = wt.branch;
       log(jobId, `Worktree ready: ${worktreePath}`);
@@ -174,8 +217,10 @@ export async function startJob(jobId: Id<"jobs">) {
     log(jobId, "Launching Claude Code CLI...");
     log(jobId, "-".repeat(40));
 
-    // Resume the project's last session if tokens are safely below the cap
-    const prevSession = projectSessions.get(job.projectId);
+    // Resume the project's last session if tokens are safely below the cap.
+    // Child tasks stay isolated (no shared session) so parallel children don't
+    // contend on one session id and don't inherit each other's context.
+    const prevSession = isChild ? undefined : projectSessions.get(job.projectId);
     const resumeId = prevSession && prevSession.inputTokens < TOKEN_RESUME_CAP
       ? prevSession.sessionId
       : undefined;
@@ -234,18 +279,18 @@ export async function startJob(jobId: Id<"jobs">) {
       await convex.mutation(api.jobs.updateUsage, { id: jobId, inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, costUsd: turn.costUsd });
 
       const freshSessionId = freshSession.getSessionId();
-      if (freshSessionId) {
+      if (freshSessionId && !isChild) {
         projectSessions.set(job.projectId, { sessionId: freshSessionId, inputTokens: turn.inputTokens });
       }
     } else {
       const finalSessionId = session.getSessionId();
-      if (finalSessionId) {
+      if (finalSessionId && !isChild) {
         projectSessions.set(job.projectId, { sessionId: finalSessionId, inputTokens: turn.inputTokens });
       }
     }
 
     if (reapIfCancelled(jobId, worktreePath, project)) return;
-    await handleTurnResult({ jobId, title: job.title, turn, worktreePath, branch, projectId: job.projectId, project: project!, convex, keepSession: true });
+    await handleTurnResult({ jobId, title: job.title, turn, worktreePath, branch, projectId: job.projectId, project: project!, convex, keepSession: true, child: childCtx });
     processing.delete(jobId);
 
   } catch (err) {
@@ -313,9 +358,10 @@ interface TurnResultArgs {
   project: { name?: string; localPath: string; repo: string; defaultBranch: string; githubToken?: string; agentRules?: string };
   convex: ConvexHttpClient;
   keepSession: boolean;
+  child?: ChildContext;
 }
 
-async function handleTurnResult({ jobId, title, turn, worktreePath, branch, projectId, project, convex }: TurnResultArgs) {
+async function handleTurnResult({ jobId, title, turn, worktreePath, branch, projectId, project, convex, child }: TurnResultArgs) {
   log(jobId, "-".repeat(40));
 
   // Surface this turn's prose as a chat bubble (ephemeral — SSE only). It also
@@ -338,6 +384,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
         worktreePath, branch, projectId, project, title,
         busy: existing?.busy ?? false,
         queue: existing?.queue ?? [],
+        child,
       });
       await withRetry(() =>
         convex.mutation(api.jobs.updateStatus, { id: jobId, status: "waiting_for_input" })
@@ -359,9 +406,45 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
     return;
   }
 
-  // Claude made changes — commit directly to default branch, no PR needed
+  // Claude made changes.
   cleanupSession(jobId);
   liveContext.delete(jobId);
+
+  // Delegated child task: commit on its own branch and merge into the epic's
+  // integration branch (serialized per epic). Nothing is pushed — the epic
+  // finalizes the whole thing into one PR once every child lands.
+  if (child) {
+    try {
+      log(jobId, `Committing subtask to ${branch}...`);
+      const committed = commitOnly(worktreePath, `feat: ${title ?? branch}
+
+Automated by Factory (delegated)`);
+      if (committed) {
+        await withEpicLock(child.parentJobId, async () =>
+          mergeIntoBranch(child.epicWorktreePath, branch, `merge ${branch} into ${child.epicBranch}`)
+        );
+        log(jobId, `Merged subtask into ${child.epicBranch}.`);
+      } else {
+        log(jobId, "No changes to merge.");
+      }
+      await withRetry(() =>
+        convex.mutation(api.jobs.updateStatus, { id: jobId, status: "completed", touchedPaths: changedFiles })
+      );
+      log(jobId, "Subtask completed.");
+      // No per-child notification — the epic notifies once on finalize, and a
+      // failed child is surfaced in the DelegatorPanel.
+    } catch (err) {
+      const msg = String(err);
+      log(jobId, `ERROR merging subtask: ${msg}`);
+      await convex.mutation(api.jobs.updateStatus, { id: jobId, status: "failed", error: msg });
+    } finally {
+      removeWorktree(project.localPath, worktreePath);
+      log(jobId, "Worktree cleaned up.");
+    }
+    return;
+  }
+
+  // Plain job — commit directly to the default branch, no PR needed.
   try {
     log(jobId, `Pushing changes to ${project.defaultBranch}...`);
     commitAndPushDirect(worktreePath, `feat: ${branch}
@@ -475,6 +558,7 @@ async function drainReplies(jobId: string): Promise<void> {
       jobId: jobId as Id<"jobs">, title: ctx.title, turn,
       worktreePath: ctx.worktreePath, branch: ctx.branch,
       projectId: ctx.projectId, project: ctx.project, convex, keepSession: true,
+      child: ctx.child,
     });
   } catch (err) {
     if (reapIfCancelled(jobId, ctx.worktreePath, ctx.project)) return;
@@ -506,6 +590,10 @@ async function continueJob(jobId: string, text: string, images: string[]): Promi
   try {
     job = await convex.query(api.jobs.get, { id: jobId as Id<"jobs"> });
     if (!job || !job.sessionId) return false;
+    // Delegated child tasks aren't chat-resumable — their changes only have
+    // meaning when merged into the epic branch, which only happens on the
+    // live execution path. Redo the child from the epic instead.
+    if (job.parentJobId) return false;
     project = await convex.query(api.projects.get, { id: job.projectId });
     if (!project) return false;
   } catch {

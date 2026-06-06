@@ -16,6 +16,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [autoRun, setAutoRun] = useState(true);
+  const [delegate, setDelegate] = useState(false);
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -53,15 +54,16 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         title,
         prompt: prompt.trim(),
         images: attachments,
+        kind: delegate ? "epic" : undefined,
       });
-      toast.success("Job created");
-      if (autoRun) {
-        // Queue it on Convex; the local worker polls and runs it. This works
-        // from a remote UI (e.g. the Vercel deploy) where the worker lives on
-        // a different machine — unlike the old /api/execute route, which tried
-        // to spawn Claude on whatever server served the request.
+      toast.success(delegate ? "Epic created" : "Job created");
+      // Epics must always be queued so the worker plans & splits them; for plain
+      // jobs the auto-run toggle decides. Queue it on Convex; the local worker
+      // polls and runs it. This works from a remote UI (e.g. the Vercel deploy)
+      // where the worker lives on a different machine.
+      if (autoRun || delegate) {
         await queueJob({ id: jobId, status: "queued" });
-        toast.success("Queued — local worker will pick it up");
+        toast.success(delegate ? "Queued — worker will plan the epic" : "Queued — local worker will pick it up");
       }
       onJobCreated?.(jobId);
       setPrompt("");
@@ -84,16 +86,28 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         {/* head */}
         <div className="flex justify-between items-center px-5 py-4 border-b-4 border-ink bg-paper">
           <b className="font-display uppercase text-[15px]">New Job — {project?.name ?? "…"}</b>
-          <button
-            className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${
-              autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-ink"
-            }`}
-            onClick={() => setAutoRun((v) => !v)}
-            title="Auto-run: start executing immediately after creating"
-          >
-            <span className={`w-[7px] h-[7px] ${autoRun ? "bg-[#3bd16f]" : "bg-[#888]"}`} />
-            Auto-run {autoRun ? "on" : "off"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${
+                delegate ? "bg-ink text-paper" : "bg-paper text-ink border border-ink"
+              }`}
+              onClick={() => setDelegate((v) => !v)}
+              title="Delegate: plan the task and split it into parallel sub-agents, merged into one PR"
+            >
+              <span className={`w-[7px] h-[7px] ${delegate ? "bg-[#e0a32e]" : "bg-[#888]"}`} />
+              Delegate {delegate ? "on" : "off"}
+            </button>
+            <button
+              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${
+                autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-ink"
+              } ${delegate ? "opacity-40 pointer-events-none" : ""}`}
+              onClick={() => setAutoRun((v) => !v)}
+              title="Auto-run: start executing immediately after creating"
+            >
+              <span className={`w-[7px] h-[7px] ${autoRun ? "bg-[#3bd16f]" : "bg-[#888]"}`} />
+              Auto-run {autoRun ? "on" : "off"}
+            </button>
+          </div>
         </div>
 
         {/* body */}
@@ -144,7 +158,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
             disabled={!prompt.trim() || loading}
             className="font-display uppercase text-[14px] bg-ink text-paper px-7 py-3 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none"
           >
-            {autoRun ? "Run" : "Queue"} <Play className="w-3.5 h-3.5" />
+            {delegate ? "Delegate" : autoRun ? "Run" : "Queue"} <Play className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

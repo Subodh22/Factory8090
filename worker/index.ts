@@ -2,6 +2,7 @@ import { ConvexClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { startJob, getActiveJobIds, reapCancelled } from "../lib/queue";
+import { handleDelegationUpdate } from "../lib/delegator-scheduler";
 import { startSseServer } from "../lib/sse-server";
 import fs from "fs";
 import path from "path";
@@ -71,6 +72,13 @@ function subscribe() {
       for (const id of toReap) console.log(`■  Stopping cancelled job: ${id}`);
       reapCancelled(toReap);
     }
+  });
+
+  // Drive the Delegator: whenever any epic or one of its child tasks changes,
+  // re-evaluate which children are now unblocked (promote them) and finalize
+  // epics whose children have all completed.
+  convex.onUpdate(api.jobs.listDelegationState, {}, (epics) => {
+    handleDelegationUpdate(convex, epics);
   });
 }
 

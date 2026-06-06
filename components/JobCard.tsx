@@ -22,10 +22,12 @@ interface Job {
   inputTokens?: number;
   outputTokens?: number;
   costUsd?: number;
+  kind?: string;
 }
 
-export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs">) => void }) {
+export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?: (id: Id<"jobs">) => void; childProgress?: { done: number; total: number } }) {
   const cancel = useMutation(api.jobs.cancel);
+  const cancelEpic = useMutation(api.jobs.cancelEpic);
   const markQueued = useMutation(api.jobs.updateStatus);
   const createJob = useMutation(api.jobs.create);
   const [showRedoDialog, setShowRedoDialog] = useState(false);
@@ -43,9 +45,15 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
   async function handleCancel() {
     // Setting status to "cancelled" is enough: the local worker polls
     // jobs.cancelledAmong every tick and stops the running agent. Works from a
-    // remote UI where the worker is on another machine.
-    await cancel({ id: job._id });
-    toast.info("Job cancelled");
+    // remote UI where the worker is on another machine. Epics cascade the
+    // cancel to their child tasks.
+    if (job.kind === "epic") {
+      await cancelEpic({ id: job._id });
+      toast.info("Epic cancelled");
+    } else {
+      await cancel({ id: job._id });
+      toast.info("Job cancelled");
+    }
   }
 
   async function handleRedo() {
@@ -79,7 +87,14 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
           <h5 className="text-[13px] font-bold uppercase text-ink leading-[1.25] flex-1">
             {job.title}
           </h5>
-          <StatusBadge status={job.status} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {job.kind === "epic" && (
+              <span className="font-data text-[9px] uppercase border border-ink px-1 bg-[#e0a32e]/25 text-ink">
+                Epic{childProgress ? ` ${childProgress.done}/${childProgress.total}` : ""}
+              </span>
+            )}
+            <StatusBadge status={job.status} />
+          </div>
         </div>
 
         <p className="font-data text-[11px] text-muted mb-3 leading-[1.45]">{job.prompt}</p>
@@ -130,7 +145,7 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
                 <RotateCcw className="w-2.5 h-2.5" /> Redo
               </button>
             )}
-            {(job.status === "pending" || job.status === "running" || job.status === "queued" || job.status === "waiting_for_input") && (
+            {(job.status === "pending" || job.status === "running" || job.status === "queued" || job.status === "waiting_for_input" || job.status === "delegating") && (
               <button className="p-1 text-muted hover:text-[#d6210f] opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Cancel agent"
                 onClick={(e) => { e.stopPropagation(); handleCancel(); }}>

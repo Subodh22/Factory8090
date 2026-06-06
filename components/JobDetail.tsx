@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
+import { DelegatorPanel } from "./DelegatorPanel";
 import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -77,13 +78,17 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const isRunning = job?.status === "running";
   // Claude asked a question and is paused — reply in the chat panel to continue
   const isWaiting = job?.status === "waiting_for_input";
+  // Epic supervising its child tasks (the Delegator scheduler is driving it)
+  const isDelegating = job?.status === "delegating";
+  const isEpic = job?.kind === "epic";
   // Backlog job not yet started — user can still edit/grow the prompt
   const isPending = job?.status === "pending" || job?.status === "queued";
   // "Done" jobs that can be re-run from scratch
   const isFinished = job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
   // Keep the live SSE connection open while running OR waiting, so chat
-  // replies stream back immediately without a Convex round-trip first.
-  const streamActive = isRunning || isWaiting;
+  // replies stream back immediately without a Convex round-trip first. Epics
+  // also stream while delegating (planner + scheduler logs).
+  const streamActive = isRunning || isWaiting || isDelegating;
 
   // Live clock — ticks every second while running so elapsed time updates
   useEffect(() => {
@@ -138,7 +143,8 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const output = (streamActive && sseOutput !== null) ? sseOutput : convexOutput;
   // Chat is available on any started job: running/waiting talk to the live
   // session; a finished job is resumed by its saved session id on first reply.
-  const canChat = !!job && !isPending;
+  // Epics aren't chatted with directly — you talk to their child tasks instead.
+  const canChat = !!job && !isPending && !isEpic;
 
   // Track when output last changed so we can show silence duration
   const lastOutputAt = useRef(Date.now());
@@ -432,6 +438,9 @@ export function JobDetail({ jobId, onRedo }: Props) {
           <div ref={bottomRef} />
         </div>
       </div>
+
+      {/* Delegator: the epic's child-task DAG with live status + output */}
+      {isEpic && <DelegatorPanel epicId={jobId} />}
 
       {/* Chat thread — ephemeral (lives in component state, not Convex) */}
       {messages.length > 0 && (

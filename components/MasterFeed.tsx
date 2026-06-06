@@ -12,15 +12,18 @@ interface Props {
 }
 
 export function MasterFeed({ projectId, onSelectJob }: Props) {
-  const jobs = useQuery(api.jobs.list, projectId ? { projectId } : {}) ?? [];
+  const allJobs = useQuery(api.jobs.list, projectId ? { projectId } : {}) ?? [];
   const projects = useQuery(api.projects.list, {}) ?? [];
   const projectMap = Object.fromEntries(projects.map((p) => [p._id, p]));
 
+  // The feed lists top-level jobs/epics; child tasks show inside their epic.
+  const jobs = allJobs.filter((j) => !j.parentJobId);
   const sorted = [...jobs].sort((a, b) => b.createdAt - a.createdAt).slice(0, 50);
 
-  const runningCount = jobs.filter((j) => j.status === "running").length;
-  const pendingCount = jobs.filter((j) => j.status === "queued" || j.status === "pending").length;
-  const doneCount = jobs.filter((j) => j.status === "completed").length;
+  // Counters include children so the "running" tally reflects the live fleet.
+  const runningCount = allJobs.filter((j) => j.status === "running").length;
+  const pendingCount = allJobs.filter((j) => j.status === "queued" || j.status === "pending").length;
+  const doneCount = allJobs.filter((j) => j.status === "completed").length;
 
   return (
     <div className="flex flex-col h-full">
@@ -59,6 +62,9 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
                   <h4 className="text-[13px] uppercase font-bold leading-[1.25] truncate min-w-0 flex-1">{job.title}</h4>
                 </div>
                 <div className="flex items-center gap-2 font-data text-[10px] text-muted">
+                  {job.kind === "epic" && (
+                    <span className="border border-ink px-1 uppercase bg-[#e0a32e]/25 text-ink">Epic</span>
+                  )}
                   <StatusBadge status={job.status} />
                   {/* Show project tag only when viewing all projects */}
                   {!projectId && project && (

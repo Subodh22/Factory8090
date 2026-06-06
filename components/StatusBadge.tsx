@@ -11,6 +11,7 @@ const config = {
   failed:            { label: "Failed",      className: "border-[#d6210f] text-[#d6210f]" },
   cancelled:         { label: "Cancelled",   className: "border-muted text-muted" },
   waiting_for_input: { label: "Needs Reply", className: "bg-ink text-concrete border-ink animate-pulse" },
+  delegating:        { label: "Delegating",  className: "bg-ink text-concrete border-ink animate-pulse" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

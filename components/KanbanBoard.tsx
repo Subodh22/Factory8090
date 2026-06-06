@@ -21,10 +21,29 @@ interface Props {
 }
 
 export function KanbanBoard({ projectId, onSelectJob }: Props) {
-  const jobs = useQuery(api.jobs.list, projectId ? { projectId } : {}) ?? [];
+  const allJobs = useQuery(api.jobs.list, projectId ? { projectId } : {}) ?? [];
+
+  // Child tasks live inside their epic's DelegatorPanel, not on the board.
+  const topLevel = allJobs.filter((j) => !j.parentJobId);
+
+  // Progress per epic, aggregated from its children (which include all jobs).
+  const childProgress = new Map<string, { done: number; total: number }>();
+  for (const j of allJobs) {
+    if (!j.parentJobId) continue;
+    const p = childProgress.get(j.parentJobId) ?? { done: 0, total: 0 };
+    p.total += 1;
+    if (j.status === "completed") p.done += 1;
+    childProgress.set(j.parentJobId, p);
+  }
 
   const byStatus = Object.fromEntries(
-    COLUMNS.map((col) => [col.key, jobs.filter((j) => j.status === col.key)])
+    COLUMNS.map((col) => [
+      col.key,
+      topLevel.filter((j) =>
+        // A delegating epic is "in progress" as far as the board is concerned.
+        col.key === "running" ? j.status === "running" || j.status === "delegating" : j.status === col.key
+      ),
+    ])
   );
 
   return (
@@ -47,7 +66,7 @@ export function KanbanBoard({ projectId, onSelectJob }: Props) {
               <ScrollArea className="flex-1">
                 <div className="flex flex-col gap-3.5 p-3.5">
                   {colJobs.map((job) => (
-                    <JobCard key={job._id} job={job} onSelect={onSelectJob} />
+                    <JobCard key={job._id} job={job} onSelect={onSelectJob} childProgress={childProgress.get(job._id)} />
                   ))}
                   {colJobs.length === 0 && (
                     <div className="border-2 border-dashed border-ink/40 p-6 text-center font-data text-[10px] uppercase text-muted">
