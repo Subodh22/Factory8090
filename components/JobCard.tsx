@@ -130,8 +130,9 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
                 <RotateCcw className="w-2.5 h-2.5" /> Redo
               </button>
             )}
-            {(job.status === "pending" || job.status === "running" || job.status === "queued") && (
+            {(job.status === "pending" || job.status === "running" || job.status === "queued" || job.status === "waiting_for_input") && (
               <button className="p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Cancel agent"
                 onClick={(e) => { e.stopPropagation(); handleCancel(); }}>
                 <X className="w-3 h-3" />
               </button>
