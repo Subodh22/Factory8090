@@ -72,28 +72,28 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
   return (
     <>
       <div
-        className="bg-[#1b1613] border border-[#2e2722] rounded-lg p-3 cursor-pointer hover:border-indigo-700 transition-colors group"
+        className="bg-paper border-[3px] border-ink p-3 cursor-pointer brutal-shadow-sm hover:-translate-x-px hover:-translate-y-px hover:shadow-[6px_6px_0_var(--ink)] transition-all group"
         onClick={() => onSelect?.(job._id)}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
-          <p className="text-sm font-medium text-zinc-100 leading-snug line-clamp-2 flex-1">
+          <h5 className="text-[13px] font-bold uppercase text-ink leading-[1.25] line-clamp-2 flex-1">
             {job.title}
-          </p>
+          </h5>
           <StatusBadge status={job.status} />
         </div>
 
-        <p className="text-xs text-zinc-500 line-clamp-2 mb-3">{job.prompt}</p>
+        <p className="font-data text-[11px] text-muted line-clamp-2 mb-3 leading-[1.45]">{job.prompt}</p>
 
         {job.images.length > 0 && (
           <div className="flex gap-1 mb-3 flex-wrap">
             {job.images.slice(0, 3).map((img, i) => (
-              <img key={i} src={img} alt="" className="w-10 h-10 rounded object-cover border border-zinc-800" />
+              <img key={i} src={img} alt="" className="w-10 h-10 object-cover border-2 border-ink" />
             ))}
           </div>
         )}
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+          <div className="flex items-center gap-2 font-data text-[10px] text-muted uppercase">
             {job.branch && (
               <span className="flex items-center gap-1">
                 <GitBranch className="w-2.5 h-2.5" />
@@ -102,7 +102,7 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
             )}
             {elapsed !== null && <span>{elapsed}s</span>}
             {job.costUsd != null && job.costUsd > 0 && (
-              <span className="text-zinc-500" title={`${((job.inputTokens ?? 0) + (job.outputTokens ?? 0)).toLocaleString()} tokens`}>
+              <span className="text-ink" title={`${((job.inputTokens ?? 0) + (job.outputTokens ?? 0)).toLocaleString()} tokens`}>
                 ${job.costUsd.toFixed(3)}
               </span>
             )}
@@ -111,27 +111,27 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
           <div className="flex items-center gap-1">
             {job.prUrl && (
               <a href={job.prUrl} target="_blank" rel="noopener noreferrer"
-                className="p-1 text-zinc-500 hover:text-indigo-400"
+                className="p-1 text-muted hover:text-ink"
                 onClick={(e) => e.stopPropagation()}>
                 <ExternalLink className="w-3 h-3" />
               </a>
             )}
             {job.status === "pending" && (
               <button
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase bg-ink text-concrete border-2 border-ink hover:bg-concrete hover:text-ink transition-colors"
                 onClick={(e) => { e.stopPropagation(); handleRun(); }}>
                 <Play className="w-2.5 h-2.5" /> Run
               </button>
             )}
             {(job.status === "cancelled" || job.status === "failed") && (
               <button
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-zinc-700 hover:bg-zinc-600 text-white transition-colors opacity-0 group-hover:opacity-100"
+                className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors opacity-0 group-hover:opacity-100"
                 onClick={openRedo}>
                 <RotateCcw className="w-2.5 h-2.5" /> Redo
               </button>
             )}
             {(job.status === "pending" || job.status === "running" || job.status === "queued") && (
-              <button className="p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+              <button className="p-1 text-muted hover:text-[#d6210f] opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => { e.stopPropagation(); handleCancel(); }}>
                 <X className="w-3 h-3" />
               </button>
@@ -142,26 +142,26 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
 
       {showRedoDialog && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40"
           onClick={() => setShowRedoDialog(false)}
         >
           <div
-            className="bg-[#221c18] border border-zinc-700 rounded-xl p-5 w-[480px] max-w-[90vw] shadow-xl"
+            className="bg-paper border-4 border-ink brutal-shadow p-5 w-[480px] max-w-[90vw]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold text-zinc-100 mb-4">Re-run job</h3>
+            <h3 className="font-display uppercase text-[15px] text-ink mb-4 pb-3 border-b-4 border-ink">Re-run job</h3>
 
             <div className="mb-3">
-              <p className="text-[11px] text-zinc-500 mb-1.5">Original prompt</p>
-              <div className="text-xs text-zinc-400 bg-zinc-900 rounded p-2.5 max-h-28 overflow-y-auto font-mono whitespace-pre-wrap">
+              <p className="font-data text-[10px] uppercase text-muted mb-1.5">Original prompt</p>
+              <div className="text-xs text-ink bg-concrete border-2 border-ink p-2.5 max-h-28 overflow-y-auto font-mono whitespace-pre-wrap">
                 {job.prompt}
               </div>
             </div>
 
             <div className="mb-5">
-              <p className="text-[11px] text-zinc-500 mb-1.5">Additional instructions <span className="text-zinc-600">(optional)</span></p>
+              <p className="font-data text-[10px] uppercase text-muted mb-1.5">Additional instructions <span className="opacity-60">(optional)</span></p>
               <textarea
-                className="w-full bg-zinc-900 border border-zinc-700 rounded p-2.5 text-xs text-zinc-200 resize-none focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full bg-concrete border-2 border-ink p-2.5 text-xs text-ink font-mono resize-none focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
                 rows={3}
                 placeholder="Add more context or updated instructions…"
                 value={additionalPrompt}
@@ -171,18 +171,18 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
                 }}
                 autoFocus
               />
-              <p className="text-[10px] text-zinc-600 mt-1">⌘↵ to submit</p>
+              <p className="font-data text-[10px] uppercase text-muted mt-1">⌘↵ to submit</p>
             </div>
 
             <div className="flex justify-end gap-2">
               <button
-                className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                className="px-3 py-1.5 font-data text-[11px] uppercase text-muted hover:text-ink transition-colors"
                 onClick={() => setShowRedoDialog(false)}
               >
                 Cancel
               </button>
               <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase bg-ink text-concrete border-2 border-ink brutal-press"
                 onClick={handleRedo}
               >
                 <RotateCcw className="w-3 h-3" /> Re-run
