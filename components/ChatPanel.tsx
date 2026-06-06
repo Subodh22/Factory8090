@@ -3,9 +3,7 @@ import { useState, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Paperclip, SendHorizontal, Zap } from "lucide-react";
+import { Paperclip, Play } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 
@@ -81,80 +79,78 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   }
 
   return (
-    <div
-      ref={dropRef}
-      className="flex flex-col gap-3 p-4 bg-[#1b1613] border border-[#2e2722] rounded-xl"
-      onDrop={onDrop}
-      onDragOver={(e) => e.preventDefault()}
-    >
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-zinc-400 tracking-widest uppercase">
-          New Job — {project?.name ?? "…"}
-        </p>
-        <button
-          className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border transition-colors ${
-            autoRun
-              ? "bg-indigo-950 border-indigo-700 text-indigo-400"
-              : "bg-zinc-900 border-zinc-700 text-zinc-500"
-          }`}
-          onClick={() => setAutoRun((v) => !v)}
-          title="Auto-run: start executing immediately after creating"
-        >
-          <Zap className="w-2.5 h-2.5" />
-          Auto-run {autoRun ? "on" : "off"}
-        </button>
-      </div>
-
-      {attachments.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {attachments.map((src, i) => (
-            <AttachmentPreview
-              key={i}
-              src={src}
-              onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-            />
-          ))}
-        </div>
-      )}
-
-      <Textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        placeholder="Describe what you want to build or change…  (paste or drop files, Cmd+Enter to send)"
-        className="min-h-[100px] resize-none bg-[#14100e] border-[#2e2722] text-zinc-100 placeholder:text-zinc-700 focus-visible:ring-indigo-700 text-sm"
-      />
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div ref={dropRef} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+      <div className="bg-paper border-4 border-ink brutal-shadow grid-bg">
+        {/* head */}
+        <div className="flex justify-between items-center px-5 py-4 border-b-4 border-ink bg-paper">
+          <b className="font-display uppercase text-[15px]">New Job — {project?.name ?? "…"}</b>
           <button
-            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-            onClick={() => fileRef.current?.click()}
+            className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${
+              autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-ink"
+            }`}
+            onClick={() => setAutoRun((v) => !v)}
+            title="Auto-run: start executing immediately after creating"
           >
-            <Paperclip className="w-3.5 h-3.5" />
-            Attach files
+            <span className={`w-[7px] h-[7px] ${autoRun ? "bg-[#3bd16f]" : "bg-[#888]"}`} />
+            Auto-run {autoRun ? "on" : "off"}
           </button>
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => e.target.files && addFiles(e.target.files)}
-          />
-          <span className="text-[10px] text-zinc-700">or paste / drag-drop</span>
         </div>
 
-        <Button
-          onClick={submit}
-          disabled={!prompt.trim() || loading}
-          size="sm"
-          className="bg-indigo-600 hover:bg-indigo-500 text-white gap-1.5"
-        >
-          <SendHorizontal className="w-3.5 h-3.5" />
-          {autoRun ? "Run" : "Queue"}
-        </Button>
+        {/* body */}
+        <div className="p-5 bg-paper">
+          {attachments.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-3">
+              {attachments.map((src, i) => (
+                <AttachmentPreview
+                  key={i}
+                  src={src}
+                  onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                />
+              ))}
+            </div>
+          )}
+
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            placeholder="Describe what you want to build or change…  (paste or drop files, Cmd+Enter to send)"
+            className="w-full min-h-[150px] resize-y border-[3px] border-ink bg-concrete p-3.5 font-mono text-[13px] text-ink leading-[1.5] placeholder:text-muted focus:outline-none focus:bg-[#dfdcd4] focus:shadow-[inset_0_0_0_3px_var(--ink)] transition-shadow"
+          />
+        </div>
+
+        {/* foot */}
+        <div className="flex justify-between items-center px-5 py-4 border-t-4 border-ink bg-paper">
+          <div className="flex items-center gap-3">
+            <button
+              className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b-2 border-ink pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+              Attach files
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => e.target.files && addFiles(e.target.files)}
+            />
+          </div>
+
+          <button
+            onClick={submit}
+            disabled={!prompt.trim() || loading}
+            className="font-display uppercase text-[14px] bg-ink text-paper px-7 py-3 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          >
+            {autoRun ? "Run" : "Queue"} <Play className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
+      <p className="font-data text-[10px] text-muted mt-3.5 uppercase text-right">
+        or paste / drag-drop · Cmd+Enter to send
+      </p>
     </div>
   );
 }
