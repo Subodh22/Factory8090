@@ -43,6 +43,23 @@ export async function createRepo(
   };
 }
 
+// Returns true if the authenticated user can still use this repo name (i.e. no
+// repo with that name already exists on their account). Used to warn in the UI
+// before attempting creation, since GitHub rejects duplicate names with a 422.
+export async function repoNameAvailable(token: string, name: string) {
+  const octokit = makeOctokit(token);
+  const { data: user } = await octokit.users.getAuthenticated();
+  try {
+    await octokit.repos.get({ owner: user.login, repo: name });
+    return false; // got it back → name is taken
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "status" in err && err.status === 404) {
+      return true; // not found → available
+    }
+    throw err;
+  }
+}
+
 export async function getRepoInfo(token: string, owner: string, repo: string) {
   const octokit = makeOctokit(token);
   const { data } = await octokit.repos.get({ owner, repo });

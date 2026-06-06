@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -37,9 +37,36 @@ export function CreateProject({ onCreated }: Props) {
   const [isPrivate, setIsPrivate] = useState(true);
   const [color, setColor] = useState(COLORS[0]);
   const [busy, setBusy] = useState<string | null>(null);
+  // Live availability of the repo name: null = unknown/checking, true/false = result.
+  const [nameTaken, setNameTaken] = useState<boolean | null>(null);
+  const [checkingName, setCheckingName] = useState(false);
 
   const slug = slugify(name);
-  const canSubmit = !!slug && !!description.trim() && !busy;
+
+  // Debounced check against GitHub so we can warn before the user submits.
+  useEffect(() => {
+    if (!slug || !session?.accessToken) return;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setCheckingName(true);
+      setNameTaken(null);
+      try {
+        const res = await fetch(`/api/projects/check-name?name=${encodeURIComponent(slug)}`);
+        const data = await res.json();
+        if (!cancelled && res.ok) setNameTaken(!data.available);
+      } catch {
+        // ignore — submit will surface the real error if any
+      } finally {
+        if (!cancelled) setCheckingName(false);
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [slug, session?.accessToken]);
+
+  const canSubmit = !!slug && !!description.trim() && !busy && nameTaken !== true && !checkingName;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,6 +80,10 @@ export function CreateProject({ onCreated }: Props) {
     }
     if (!description.trim()) {
       toast.error("Describe what you want to build");
+      return;
+    }
+    if (nameTaken) {
+      toast.error(`You already have a repo named "${slug}" — pick another name`);
       return;
     }
 
@@ -148,8 +179,22 @@ export function CreateProject({ onCreated }: Props) {
               placeholder="My App"
             />
             {slug && (
-              <p className="font-data text-[10px] text-muted uppercase mt-1">
-                Repo will be created as <span className="text-ink font-bold">{slug}</span>
+              <p className="font-data text-[10px] uppercase mt-1">
+                {checkingName ? (
+                  <span className="text-muted">Checking <span className="text-ink font-bold">{slug}</span>…</span>
+                ) : nameTaken ? (
+                  <span className="text-red-600 font-bold">
+                    You already have a repo named &ldquo;{slug}&rdquo; — pick another name
+                  </span>
+                ) : nameTaken === false ? (
+                  <span className="text-muted">
+                    Repo will be created as <span className="text-green-700 font-bold">{slug}</span> ✓
+                  </span>
+                ) : (
+                  <span className="text-muted">
+                    Repo will be created as <span className="text-ink font-bold">{slug}</span>
+                  </span>
+                )}
               </p>
             )}
           </div>
