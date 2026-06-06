@@ -130,7 +130,7 @@ function AgentCard({ jobId, projectName, projectColor }: AgentCardProps) {
     : null;
 
   return (
-    <div className="flex flex-col bg-ink border-[3px] border-ink brutal-shadow-sm overflow-hidden" style={{ height: 320 }}>
+    <div className="flex flex-col bg-ink border-[3px] border-ink brutal-shadow-sm overflow-hidden flex-shrink-0" style={{ height: 320, width: 420 }}>
       {isRunning && (
         <div className="h-1 w-full bg-[#2a2722] overflow-hidden relative flex-shrink-0">
           <style>{`@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}`}</style>
@@ -244,7 +244,7 @@ export function AgentsGrid({ projectId }: Props) {
   const showProjectTag = !projectId;
 
   return (
-    <div className="h-full flex flex-col max-w-[840px] mx-auto w-full">
+    <div className="h-full flex flex-col w-full">
       <div className="flex flex-wrap items-center gap-2 mb-5 flex-shrink-0">
         {FILTERS.map((f) => {
           const selected = filter === f.key;
@@ -276,8 +276,8 @@ export function AgentsGrid({ projectId }: Props) {
           )}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
-          <div className="flex flex-col gap-3">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div className="flex flex-row gap-3 h-full">
             {displayJobs.map((j) => {
               const p = projectMap[j.projectId];
               return (
