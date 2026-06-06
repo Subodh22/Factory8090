@@ -1,4 +1,4 @@
-import { ConvexHttpClient } from "convex/browser";
+import { ConvexClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { startJob, getActiveJobIds, reapCancelled } from "../lib/queue";
@@ -26,7 +26,11 @@ if (!CONVEX_URL) {
   process.exit(1);
 }
 
-const convex = new ConvexHttpClient(CONVEX_URL);
+// ConvexClient holds a WebSocket and PUSHES query results when matching rows
+// change — so the worker can sleep until a job is actually queued instead of
+// polling on a timer. It also exposes one-off query()/mutation() for the
+// rehydrate/sweep paths below.
+const convex = new ConvexClient(CONVEX_URL);
 
 // Worker-level dedup — prevents launching the same job twice in one tick
 const launching = new Set<string>();
@@ -49,41 +53,46 @@ function launch(job: { _id: string; title: string }, reason: string) {
     .finally(() => launching.delete(job._id));
 }
 
-async function tick() {
-  try {
-    // Pick up fresh queued jobs
-    const queued = await convex.query(api.jobs.listByStatus, { status: "queued" });
-    for (const job of queued) launch(job, "Starting");
+// Each subscription's callback fires once on subscribe (with the current value)
+// and again every time a matching row changes — so these replace the old 2s
+// poll entirely. The `launching` dedup in launch() makes repeated fires safe.
 
-    // Deliver user replies to jobs awaiting input OR already finished. Chatting
-    // with a "done" job continues the conversation by resuming its saved session.
-    for (const status of ["waiting_for_input", "completed", "failed"] as const) {
-      const jobs = await convex.query(api.jobs.listByStatus, { status });
-      for (const job of jobs) {
-        if (!job.lastUserMessageAt) continue;
-        const completedAt = job.completedAt ?? 0;
-        if (job.lastUserMessageAt <= completedAt) continue;
-        // Finished jobs can only be resumed if we captured a session id; waiting
-        // jobs always have a live session, so they're fine without one.
-        if (status !== "waiting_for_input" && !job.sessionId) continue;
-        launch(job, "User replied");
-      }
-    }
+type JobRow = { _id: string; title: string; status: string; lastUserMessageAt?: number; completedAt?: number; sessionId?: string };
 
-    // Stop any agents the user cut from the UI (status set to "cancelled")
-    const active = getActiveJobIds();
-    if (active.length > 0) {
-      const cancelled = await convex.query(api.jobs.cancelledAmong, {
-        ids: active as Id<"jobs">[],
-      });
-      if (cancelled.length > 0) {
-        for (const id of cancelled) console.log(`■  Stopping cancelled job: ${id}`);
-        reapCancelled(cancelled);
-      }
-    }
-  } catch (err) {
-    console.error(`[worker] tick error: ${err}`);
+/** A user reply (or a fresh message to a finished job) bumps lastUserMessageAt
+ *  above completedAt — deliver it by resuming the conversation. */
+function maybeDeliverReply(job: JobRow) {
+  if (!job.lastUserMessageAt) return;
+  if (job.lastUserMessageAt <= (job.completedAt ?? 0)) return;
+  // Finished jobs can only be resumed if we captured a session id; waiting
+  // jobs always have a live session, so they're fine without one.
+  if (job.status !== "waiting_for_input" && !job.sessionId) return;
+  launch(job, "User replied");
+}
+
+function subscribe() {
+  // Pick up fresh queued jobs the instant they appear.
+  convex.onUpdate(api.jobs.listByStatus, { status: "queued" }, (jobs) => {
+    for (const job of jobs) launch(job, "Starting");
+  });
+
+  // Deliver user replies to jobs awaiting input OR already finished. Chatting
+  // with a "done" job continues the conversation by resuming its saved session.
+  for (const status of ["waiting_for_input", "completed", "failed"] as const) {
+    convex.onUpdate(api.jobs.listByStatus, { status }, (jobs) => {
+      for (const job of jobs) maybeDeliverReply(job);
+    });
   }
+
+  // Stop any agents the user cut from the UI (status set to "cancelled").
+  convex.onUpdate(api.jobs.listByStatus, { status: "cancelled" }, (jobs) => {
+    const active = new Set(getActiveJobIds());
+    const toReap = jobs.map((j) => j._id).filter((id) => active.has(id));
+    if (toReap.length > 0) {
+      for (const id of toReap) console.log(`■  Stopping cancelled job: ${id}`);
+      reapCancelled(toReap);
+    }
+  });
 }
 
 async function rehydrate() {
@@ -118,17 +127,18 @@ async function sweepStuck() {
   }
 }
 
-rehydrate().then(() => tick());
-// Poll interval. Each tick runs several Convex queries, so a tight interval
-// burns through function-call quota fast (200ms ≈ 25 calls/s ≈ tens of millions
-// of calls/day — well over the Convex free tier). 2s matches the documented
-// cadence and is plenty responsive for job pickup. Override with WORKER_POLL_MS.
-const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
-const interval = setInterval(tick, POLL_MS);
-setInterval(sweepStuck, 60_000); // check for stuck jobs every minute
+// Recover orphaned "running" jobs from a previous run, then open the live
+// subscriptions. After this the worker is event-driven — it wakes only when
+// Convex pushes a change, not on a timer.
+rehydrate().then(() => subscribe());
+
+// Stuck-job detection is inherently time-based (10 min with no completion), so
+// it stays on a slow timer rather than a subscription — one query per minute.
+const sweepInterval = setInterval(sweepStuck, 60_000);
 
 process.on("SIGINT", () => {
-  clearInterval(interval);
+  clearInterval(sweepInterval);
+  convex.close();
   console.log("\n\n👋  Worker stopped.\n");
   process.exit(0);
 });
