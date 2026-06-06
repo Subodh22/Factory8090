@@ -7,6 +7,8 @@ import { GitBranch, Clock, ExternalLink, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+const SSE_BASE = process.env.NEXT_PUBLIC_WORKER_SSE_URL ?? "http://localhost:3099";
+
 type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "text";
 
 function parseAgentLine(raw: string): { type: LineType; text: string } {
@@ -37,9 +39,26 @@ interface MiniTerminalProps {
 }
 
 function MiniTerminal({ jobId, isRunning }: MiniTerminalProps) {
-  const chunks = useQuery(api.jobs.getOutput, { jobId });
   const bottomRef = useRef<HTMLDivElement>(null);
-  const output = chunks?.map((c) => c.text).join("") ?? "";
+  const [output, setOutput] = useState("");
+
+  // Output is streamed live over SSE only and never stored, so a mini-terminal
+  // shows output only while its job is actively running. When the job isn't
+  // running there is nothing to show.
+  useEffect(() => {
+    if (!isRunning) { setOutput(""); return; }
+    let acc = "";
+    const es = new EventSource(`${SSE_BASE}/stream/${encodeURIComponent(jobId)}`);
+    es.onmessage = (e) => {
+      try {
+        const { text } = JSON.parse(e.data) as { text: string };
+        acc += text;
+        setOutput(acc);
+      } catch { /* ignore malformed events */ }
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, [jobId, isRunning]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

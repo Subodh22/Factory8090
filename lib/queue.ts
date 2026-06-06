@@ -67,9 +67,9 @@ interface ProjectSession { sessionId: string; inputTokens: number }
 const projectSessions = new Map<string, ProjectSession>();
 
 function log(jobId: Id<"jobs">, msg: string) {
-  const line = `[factory] ${msg}\n`;
-  broadcast(jobId, line);
-  getConvex().mutation(api.jobs.appendOutput, { jobId, text: line }).catch(() => {});
+  // Terminal output is streamed live over SSE only — never persisted to Convex.
+  // (Storing every chunk was the dominant source of Convex DB-bandwidth usage.)
+  broadcast(jobId, `[factory] ${msg}\n`);
 }
 
 /** Was a browser tab open within the last 30s? If so, the UI shows a popup and
@@ -182,8 +182,7 @@ export async function startJob(jobId: Id<"jobs">) {
       log(jobId, "-".repeat(40));
 
       session.onChunk((text) => {
-        broadcast(jobId, text);
-        convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
+        broadcast(jobId, text); // SSE only — not persisted
       });
 
       // Save any attached files to the worktree so Claude can read them
@@ -248,8 +247,7 @@ export async function startJob(jobId: Id<"jobs">) {
     });
 
     session.onChunk((text) => {
-      broadcast(jobId, text);
-      convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
+      broadcast(jobId, text); // SSE only — not persisted
     });
 
     const baseRules = project.agentRules ? `${project.agentRules}\n\n` : "";
@@ -282,8 +280,7 @@ export async function startJob(jobId: Id<"jobs">) {
         convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", sessionId: id }).catch(() => {});
       });
       freshSession.onChunk((text) => {
-        broadcast(jobId, text);
-        convex.mutation(api.jobs.appendOutput, { jobId, text }).catch(() => {});
+        broadcast(jobId, text); // SSE only — not persisted
       });
 
       const freshSystemContext = `${baseRules}${claudeHint}${repoMap}

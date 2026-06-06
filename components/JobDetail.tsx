@@ -43,7 +43,6 @@ const SSE_BASE = process.env.NEXT_PUBLIC_WORKER_SSE_URL ?? "http://localhost:309
 
 export function JobDetail({ jobId, onRedo }: Props) {
   const job = useQuery(api.jobs.get, { id: jobId });
-  const chunks = useQuery(api.jobs.getOutput, { jobId });
   const messages = useQuery(api.jobs.listMessages, { jobId });
   const addMessage = useMutation(api.jobs.addMessage);
   const appendPrompt = useMutation(api.jobs.appendPrompt);
@@ -64,7 +63,9 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const [redoing, setRedoing] = useState(false);
   const redoFileInputRef = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => Date.now());
-  const convexOutput = chunks?.map((c) => c.text).join("") ?? "";
+  // Output is streamed live over SSE only (never persisted), so there is no
+  // stored log to fall back to — finished jobs show no terminal history.
+  const convexOutput = "";
 
   const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
