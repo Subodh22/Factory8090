@@ -28,14 +28,14 @@ export function KanbanBoard({ projectId, onSelectJob }: Props) {
   );
 
   return (
-    <div className="max-w-[1100px] mx-auto h-full border-4 border-ink bg-concrete overflow-hidden flex flex-col brutal-shadow">
+    <div className="w-full h-full border-4 border-ink bg-concrete overflow-hidden flex flex-col brutal-shadow">
       <div className="flex-1 flex overflow-x-auto">
         {COLUMNS.map((col, i) => {
           const colJobs = byStatus[col.key] ?? [];
           return (
             <div
               key={col.key}
-              className={`flex-shrink-0 w-[80vw] sm:w-72 flex flex-col ${i < COLUMNS.length - 1 ? "border-r-4 border-ink" : ""}`}
+              className={`flex-shrink-0 w-[80vw] sm:flex-1 sm:w-auto sm:min-w-[180px] flex flex-col ${i < COLUMNS.length - 1 ? "border-r-4 border-ink" : ""}`}
             >
               <div className="flex items-center justify-between px-4 py-3.5 border-b-4 border-ink bg-ink text-concrete">
                 <span className="font-display uppercase text-[13px] flex items-center gap-2">
