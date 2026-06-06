@@ -97,13 +97,7 @@ export function UsagePanel() {
     return <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">Loading usage…</div>;
   }
 
-  if (error) {
-    return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">
-        {error}
-      </div>
-    );
-  }
+  if (error) return null;
 
   if (!data) return null;
 
