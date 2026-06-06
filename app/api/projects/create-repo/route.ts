@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
     repoInfo = await createRepo(token, name.trim(), description ?? "", isPrivate !== false);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create repo";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = /already exists/i.test(message) ? 409 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 
   const workspace = process.env.FACTORY_WORKSPACE ?? path.join(os.homedir(), "factory-workspace");

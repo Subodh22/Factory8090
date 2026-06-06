@@ -30,12 +30,30 @@ export async function createRepo(
   isPrivate: boolean
 ) {
   const octokit = makeOctokit(token);
-  const { data } = await octokit.repos.createForAuthenticatedUser({
-    name,
-    description: description || undefined,
-    private: isPrivate,
-    auto_init: true, // seed an initial commit + default branch so the repo is cloneable
-  });
+  let data;
+  try {
+    ({ data } = await octokit.repos.createForAuthenticatedUser({
+      name,
+      description: description || undefined,
+      private: isPrivate,
+      auto_init: true, // seed an initial commit + default branch so the repo is cloneable
+    }));
+  } catch (err: unknown) {
+    // GitHub returns 422 with field "name" / "already exists" when a repo of the
+    // same name is already on the account. Surface a clear, actionable message.
+    const nameTaken =
+      typeof err === "object" &&
+      err !== null &&
+      "status" in err &&
+      (err as { status?: number }).status === 422 &&
+      /already exists/i.test((err as { message?: string }).message ?? "");
+    if (nameTaken) {
+      throw new Error(
+        `A repository named "${name}" already exists on your GitHub account. Choose a different project name.`
+      );
+    }
+    throw err;
+  }
   return {
     fullName: data.full_name,
     defaultBranch: data.default_branch,
