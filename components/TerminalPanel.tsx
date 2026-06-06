@@ -150,9 +150,9 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0b] border border-[#27272a] rounded-lg overflow-hidden">
+    <div className="flex flex-col h-full bg-[#14100e] border border-[#2e2722] rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 h-9 border-b border-[#27272a] flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 h-9 border-b border-[#2e2722] flex-shrink-0">
         <TerminalIcon className="w-3.5 h-3.5 text-indigo-400" />
         <span className="text-xs font-medium text-zinc-300">{project.name}</span>
         <span className="text-[10px] text-zinc-600 truncate max-w-[40%]" title={project.localPath}>
@@ -215,7 +215,7 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
       </div>
 
       {/* Input */}
-      <div className="flex items-center gap-2 px-3 h-10 border-t border-[#27272a] flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 h-10 border-t border-[#2e2722] flex-shrink-0">
         <span className="text-indigo-400 font-mono text-xs">$</span>
         <input
           ref={inputRef}

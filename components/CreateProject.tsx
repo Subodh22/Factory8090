@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Sparkles, Lock, Globe } from "lucide-react";
 import { toast } from "sonner";
 
-const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+const COLORS = ["#b86a39", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
 
 // "My Cool App!" → "my-cool-app" — preview of the GitHub repo slug.
 function slugify(s: string) {
@@ -122,7 +122,7 @@ export function CreateProject({ onCreated }: Props) {
 
   return (
     <div className="max-w-2xl mx-auto pt-4">
-      <div className="flex flex-col gap-4 p-5 bg-[#111113] border border-[#27272a] rounded-xl">
+      <div className="flex flex-col gap-4 p-5 bg-[#1b1613] border border-[#2e2722] rounded-xl">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-indigo-400" />
           <h2 className="text-sm font-semibold text-zinc-100">Create a new project</h2>
@@ -146,7 +146,7 @@ export function CreateProject({ onCreated }: Props) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My App"
-              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100"
+              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
             />
             {slug && (
               <p className="text-[10px] text-zinc-600 mt-1">
@@ -165,7 +165,7 @@ export function CreateProject({ onCreated }: Props) {
               onChange={(e) => setDescription(e.target.value)}
               rows={6}
               placeholder={`e.g. A todo app with a Next.js frontend and a SQLite backend.\nUsers can add, complete, and delete tasks, and filter by status.`}
-              className="bg-[#0a0a0b] border-[#27272a] text-zinc-100 text-sm resize-none placeholder:text-zinc-700 focus-visible:ring-indigo-700"
+              className="bg-[#14100e] border-[#2e2722] text-zinc-100 text-sm resize-none placeholder:text-zinc-700 focus-visible:ring-indigo-700"
             />
           </div>
 
@@ -179,7 +179,7 @@ export function CreateProject({ onCreated }: Props) {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border transition-colors ${
                   isPrivate
                     ? "bg-indigo-950 border-indigo-700 text-indigo-300"
-                    : "bg-[#0a0a0b] border-[#27272a] text-zinc-500 hover:text-zinc-300"
+                    : "bg-[#14100e] border-[#2e2722] text-zinc-500 hover:text-zinc-300"
                 }`}
               >
                 <Lock className="w-3 h-3" /> Private
@@ -190,7 +190,7 @@ export function CreateProject({ onCreated }: Props) {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border transition-colors ${
                   !isPrivate
                     ? "bg-indigo-950 border-indigo-700 text-indigo-300"
-                    : "bg-[#0a0a0b] border-[#27272a] text-zinc-500 hover:text-zinc-300"
+                    : "bg-[#14100e] border-[#2e2722] text-zinc-500 hover:text-zinc-300"
                 }`}
               >
                 <Globe className="w-3 h-3" /> Public

@@ -143,7 +143,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
           <button
             onClick={() => setReveal((v) => !v)}
             title={reveal ? "Hide values" : "Reveal values"}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#27272a] rounded-md transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#2e2722] rounded-md transition-colors"
           >
             {reveal ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
             {reveal ? "Hide" : "Reveal"}
@@ -151,7 +151,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
           <button
             onClick={() => setRaw((v) => !v)}
             title={raw ? "Structured editor" : "Raw text editor"}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#27272a] rounded-md transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#2e2722] rounded-md transition-colors"
           >
             {raw ? <ListTree className="w-3 h-3" /> : <Braces className="w-3 h-3" />}
             {raw ? "Form" : "Raw"}
@@ -160,7 +160,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
             onClick={load}
             disabled={loading}
             title="Reload from disk"
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#27272a] rounded-md transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#2e2722] rounded-md transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
             Reload
@@ -188,7 +188,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
             onChange={(e) => setRows(parseEnv(e.target.value))}
             spellCheck={false}
             placeholder={"# KEY=value, one per line\nNEXT_PUBLIC_CONVEX_URL=https://…"}
-            className="w-full h-full min-h-[300px] bg-[#0a0a0b] border border-[#27272a] rounded-md p-3 font-mono text-xs text-zinc-100 outline-none focus:border-zinc-600 resize-none placeholder:text-zinc-700"
+            className="w-full h-full min-h-[300px] bg-[#14100e] border border-[#2e2722] rounded-md p-3 font-mono text-xs text-zinc-100 outline-none focus:border-zinc-600 resize-none placeholder:text-zinc-700"
           />
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -200,7 +200,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
                     onChange={(e) => updatePair(r.id, { key: e.target.value })}
                     placeholder="KEY"
                     spellCheck={false}
-                    className="w-2/5 bg-[#0a0a0b] border border-[#27272a] rounded-md px-2.5 py-1.5 font-mono text-xs text-indigo-300 outline-none focus:border-zinc-600 placeholder:text-zinc-700"
+                    className="w-2/5 bg-[#14100e] border border-[#2e2722] rounded-md px-2.5 py-1.5 font-mono text-xs text-indigo-300 outline-none focus:border-zinc-600 placeholder:text-zinc-700"
                   />
                   <span className="text-zinc-600 text-xs">=</span>
                   <input
@@ -209,7 +209,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
                     placeholder="value"
                     spellCheck={false}
                     type={!reveal && looksSecret(r.key) ? "password" : "text"}
-                    className="flex-1 bg-[#0a0a0b] border border-[#27272a] rounded-md px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-700"
+                    className="flex-1 bg-[#14100e] border border-[#2e2722] rounded-md px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-700"
                   />
                   <button
                     onClick={() => removeRow(r.id)}
@@ -226,7 +226,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
                     onChange={(e) => updateRaw(r.id, e.target.value)}
                     placeholder="# comment"
                     spellCheck={false}
-                    className="flex-1 bg-transparent border border-transparent rounded-md px-2.5 py-1 font-mono text-xs text-zinc-600 outline-none focus:border-[#27272a] focus:bg-[#0a0a0b]"
+                    className="flex-1 bg-transparent border border-transparent rounded-md px-2.5 py-1 font-mono text-xs text-zinc-600 outline-none focus:border-[#2e2722] focus:bg-[#14100e]"
                   />
                   <button
                     onClick={() => removeRow(r.id)}
@@ -241,7 +241,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
 
             <button
               onClick={addPair}
-              className="flex items-center gap-1.5 mt-1 px-2.5 py-1.5 text-xs text-zinc-500 hover:text-zinc-200 border border-dashed border-[#27272a] hover:border-zinc-600 rounded-md transition-colors w-fit"
+              className="flex items-center gap-1.5 mt-1 px-2.5 py-1.5 text-xs text-zinc-500 hover:text-zinc-200 border border-dashed border-[#2e2722] hover:border-zinc-600 rounded-md transition-colors w-fit"
             >
               <Plus className="w-3.5 h-3.5" /> Add variable
             </button>
