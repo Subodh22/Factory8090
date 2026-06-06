@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X, RotateCcw, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -43,9 +43,13 @@ const SSE_BASE = process.env.NEXT_PUBLIC_WORKER_SSE_URL ?? "http://localhost:309
 
 export function JobDetail({ jobId, onRedo }: Props) {
   const job = useQuery(api.jobs.get, { id: jobId });
+  const messages = useQuery(api.jobs.listMessages, { jobId });
+  const addMessage = useMutation(api.jobs.addMessage);
   const appendPrompt = useMutation(api.jobs.appendPrompt);
   const redo = useMutation(api.jobs.redo);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [promptDraft, setPromptDraft] = useState("");
   const [addingPrompt, setAddingPrompt] = useState(false);
@@ -63,6 +67,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
   // stored log to fall back to — finished jobs show no terminal history.
   const convexOutput = "";
 
+  const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
   // Backlog job not yet started — user can still edit/grow the prompt
   const isPending = job?.status === "pending" || job?.status === "queued";
@@ -112,6 +117,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   // Use SSE output while running (fast path), Convex output otherwise (source of truth)
   const output = (isRunning && sseOutput !== null) ? sseOutput : convexOutput;
+  const canChat = job?.status !== "pending";
 
   // Track when output last changed so we can show silence duration
   const lastOutputAt = useRef(Date.now());
@@ -133,7 +139,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [output]);
+  }, [output, messages]);
 
   async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -193,6 +199,19 @@ export function JobDetail({ jobId, onRedo }: Props) {
       toast.success("Added to prompt");
     } finally {
       setAddingPrompt(false);
+    }
+  }
+
+  async function handleReply(e: React.FormEvent) {
+    e.preventDefault();
+    if ((!reply.trim() && !attachedFiles.length) || sending) return;
+    setSending(true);
+    try {
+      await addMessage({ jobId, role: "user", text: reply.trim(), images: attachedFiles.length ? attachedFiles : undefined });
+      setReply("");
+      setAttachedFiles([]);
+    } finally {
+      setSending(false);
     }
   }
 
@@ -378,6 +397,40 @@ export function JobDetail({ jobId, onRedo }: Props) {
         </div>
       </div>
 
+      {/* Chat thread */}
+      {messages && messages.length > 0 && (
+        <div className="border-t-4 border-ink flex-shrink-0 max-h-64 overflow-y-auto bg-concrete">
+          <div className="px-4 py-2 border-b-2 border-ink">
+            <span className="font-data text-[10px] text-muted tracking-widest uppercase">
+              Chat
+            </span>
+          </div>
+          <div className="p-4 space-y-3">
+            {messages.map((msg) => (
+              <div key={msg._id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                <div className="font-data text-[10px] font-bold uppercase mt-0.5 flex-shrink-0 text-ink">
+                  {msg.role === "assistant" ? "Claude" : "You"}
+                </div>
+                <div className={`text-xs px-3 py-2 max-w-[85%] whitespace-pre-wrap border-2 border-ink ${
+                  msg.role === "assistant"
+                    ? "bg-paper text-ink"
+                    : "bg-ink text-concrete"
+                }`}>
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="flex gap-1.5 flex-wrap mb-1.5">
+                      {msg.images.map((src, i) => (
+                        <AttachmentPreview key={i} src={src} size={64} />
+                      ))}
+                    </div>
+                  )}
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Add-to-prompt — backlog jobs can grow their prompt before they run */}
       {isPending && (
         <div className="border-t-4 border-ink bg-concrete p-3 flex-shrink-0">
@@ -419,6 +472,65 @@ export function JobDetail({ jobId, onRedo }: Props) {
             >
               <Plus className="w-3 h-3" />
               {addingPrompt ? "..." : "Add"}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Chat input */}
+      {canChat && (
+        <div className={`border-t-4 p-3 flex-shrink-0 ${
+          isWaiting
+            ? "border-ink bg-[#b8860b]/15"
+            : "border-ink bg-concrete"
+        }`}>
+          {isWaiting && (
+            <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">
+              Claude has a question — reply to continue
+            </p>
+          )}
+          {isRunning && (
+            <p className="font-data text-[10px] uppercase text-muted mb-2">
+              Message will be delivered when Claude finishes this turn
+            </p>
+          )}
+          {/* Attachment previews */}
+          {attachedFiles.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {attachedFiles.map((src, i) => (
+                <AttachmentPreview
+                  key={i}
+                  src={src}
+                  size={56}
+                  onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))}
+                />
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleReply} className="flex gap-2">
+            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFilePick} />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0"
+              title="Attach files"
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
+            <input
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              placeholder={isWaiting ? "Reply to Claude..." : isRunning ? "Queue a message..." : "Message Claude..."}
+              className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
+              autoFocus={isWaiting}
+            />
+            <button
+              type="submit"
+              disabled={(!reply.trim() && !attachedFiles.length) || sending}
+              className="px-3 py-2 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"
+            >
+              <Send className="w-3 h-3" />
+              {sending ? "…" : "Send"}
             </button>
           </form>
         </div>

@@ -57,11 +57,32 @@ function launch(job: { _id: string; title: string }, reason: string) {
 // and again every time a matching row changes — so these replace the old 2s
 // poll entirely. The `launching` dedup in launch() makes repeated fires safe.
 
+type JobRow = { _id: string; title: string; status: string; lastUserMessageAt?: number; completedAt?: number; sessionId?: string };
+
+/** A user reply (or a fresh message to a finished job) bumps lastUserMessageAt
+ *  above completedAt — deliver it by resuming the conversation. */
+function maybeDeliverReply(job: JobRow) {
+  if (!job.lastUserMessageAt) return;
+  if (job.lastUserMessageAt <= (job.completedAt ?? 0)) return;
+  // Finished jobs can only be resumed if we captured a session id; waiting
+  // jobs always have a live session, so they're fine without one.
+  if (job.status !== "waiting_for_input" && !job.sessionId) return;
+  launch(job, "User replied");
+}
+
 function subscribe() {
   // Pick up fresh queued jobs the instant they appear.
   convex.onUpdate(api.jobs.listByStatus, { status: "queued" }, (jobs) => {
     for (const job of jobs) launch(job, "Starting");
   });
+
+  // Deliver user replies to jobs awaiting input OR already finished. Chatting
+  // with a "done" job continues the conversation by resuming its saved session.
+  for (const status of ["waiting_for_input", "completed", "failed"] as const) {
+    convex.onUpdate(api.jobs.listByStatus, { status }, (jobs) => {
+      for (const job of jobs) maybeDeliverReply(job);
+    });
+  }
 
   // Stop any agents the user cut from the UI (status set to "cancelled").
   convex.onUpdate(api.jobs.listByStatus, { status: "cancelled" }, (jobs) => {

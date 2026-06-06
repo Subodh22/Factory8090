@@ -24,8 +24,10 @@ export default defineSchema({
       v.literal("running"),
       v.literal("completed"),
       v.literal("failed"),
-      v.literal("cancelled")
+      v.literal("cancelled"),
+      v.literal("waiting_for_input")
     ),
+    lastUserMessageAt: v.optional(v.number()),
     sessionId: v.optional(v.string()),
     priority: v.number(),          // lower = higher priority
     touchedPaths: v.array(v.string()),  // files/dirs this job will touch
@@ -48,6 +50,14 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_status", ["status"])
     .index("by_project_status", ["projectId", "status"]),
+
+  jobMessages: defineTable({
+    jobId: v.id("jobs"),
+    role: v.union(v.literal("assistant"), v.literal("user")),
+    text: v.string(),
+    images: v.optional(v.array(v.string())),  // base64 data URLs attached by user
+    ts: v.number(),
+  }).index("by_job", ["jobId"]),
 
   outputChunks: defineTable({
     jobId: v.id("jobs"),
