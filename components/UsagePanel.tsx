@@ -97,13 +97,7 @@ export function UsagePanel() {
     return <div className="border-2 border-ink bg-paper p-4 font-data text-[11px] uppercase text-muted">Loading usage…</div>;
   }
 
-  if (error) {
-    return (
-      <div className="border-2 border-ink bg-paper p-4 font-data text-[11px] uppercase text-muted">
-        {error}
-      </div>
-    );
-  }
+  if (error) return null;
 
   if (!data) return null;
 

@@ -6,12 +6,13 @@ import { JobCard } from "./JobCard";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const COLUMNS = [
-  { key: "pending",   label: "Backlog",     dot: "#6b675f" },
-  { key: "queued",    label: "Queued",      dot: "#b8860b" },
-  { key: "running",   label: "In Progress", dot: "#1f7a3d" },
-  { key: "completed", label: "Done",        dot: "#1f7a3d" },
-  { key: "failed",    label: "Failed",      dot: "#d6210f" },
-  { key: "cancelled", label: "Cancelled",   dot: "#6b675f" },
+  { key: "pending",           label: "Backlog",     dot: "#6b675f" },
+  { key: "queued",            label: "Queued",      dot: "#b8860b" },
+  { key: "running",           label: "In Progress", dot: "#1f7a3d" },
+  { key: "waiting_for_input", label: "Needs Reply", dot: "#d97706" },
+  { key: "completed",         label: "Done",        dot: "#1f7a3d" },
+  { key: "failed",            label: "Failed",      dot: "#d6210f" },
+  { key: "cancelled",         label: "Cancelled",   dot: "#6b675f" },
 ] as const;
 
 interface Props {
