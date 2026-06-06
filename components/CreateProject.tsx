@@ -82,14 +82,18 @@ export function CreateProject({ onCreated }: Props) {
       });
 
       // Seed a CLAUDE.md so the agent has guidance from the first job (non-fatal).
-      try {
-        await fetch("/api/projects/claudemd", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ localPath: data.localPath, projectName: name.trim(), agentRules }),
-        });
-      } catch {
-        // ignore — project still works without it
+      // Skipped when there's no local clone yet (e.g. UI on Vercel) — the worker
+      // clones the repo on first job and the agent gets its guidance from there.
+      if (data.localPath) {
+        try {
+          await fetch("/api/projects/claudemd", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ localPath: data.localPath, projectName: name.trim(), agentRules }),
+          });
+        } catch {
+          // ignore — project still works without it
+        }
       }
 
       // 3. Queue the initial build job. The local worker picks it up and builds.
