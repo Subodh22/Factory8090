@@ -1,21 +1,28 @@
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+// Brutalist signage tags — square, uppercase Space Mono, hard ink edges.
+// "Active" states (running / needs-reply) get a solid ink fill; the rest are
+// outline tags, with failed/done picking up a single signal colour.
 const config = {
-  pending:           { label: "Pending",        className: "bg-zinc-800 text-zinc-400 border-zinc-700" },
-  queued:            { label: "Queued",          className: "bg-amber-950 text-amber-400 border-amber-800" },
-  running:           { label: "Running",         className: "bg-indigo-950 text-indigo-400 border-indigo-700 animate-pulse" },
-  completed:         { label: "Done",            className: "bg-green-950 text-green-400 border-green-800" },
-  failed:            { label: "Failed",          className: "bg-red-950 text-red-400 border-red-800" },
-  cancelled:         { label: "Cancelled",       className: "bg-zinc-900 text-zinc-600 border-zinc-800" },
-  waiting_for_input: { label: "Needs Reply",     className: "bg-yellow-950 text-yellow-400 border-yellow-700 animate-pulse" },
+  pending:           { label: "Pending",    className: "border-ink text-ink" },
+  queued:            { label: "Queued",      className: "border-ink text-ink" },
+  running:           { label: "Running",     className: "bg-ink text-concrete border-ink animate-pulse" },
+  completed:         { label: "Done",        className: "border-[#1f7a3d] text-[#1f7a3d]" },
+  failed:            { label: "Failed",      className: "border-[#d6210f] text-[#d6210f]" },
+  cancelled:         { label: "Cancelled",   className: "border-muted text-muted" },
+  waiting_for_input: { label: "Needs Reply", className: "bg-ink text-concrete border-ink animate-pulse" },
 };
 
 export function StatusBadge({ status }: { status: string }) {
   const s = config[status as keyof typeof config] ?? config.pending;
   return (
-    <Badge variant="outline" className={cn("text-[10px] font-medium tracking-wide", s.className)}>
+    <span
+      className={cn(
+        "inline-flex items-center font-data text-[10px] uppercase tracking-wide border px-1.5 leading-[1.4]",
+        s.className,
+      )}
+    >
       {s.label}
-    </Badge>
+    </span>
   );
 }

@@ -24,48 +24,49 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-[#2e2722]">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-zinc-400 tracking-widest uppercase">
-            {projectId ? "Project Jobs" : "All Jobs"}
+      {/* side-head: title + big stat counters */}
+      <div className="px-5 py-4 border-b-4 border-ink">
+        <div className="font-display uppercase text-[13px] tracking-[.5px] mb-3">
+          {projectId ? "Project Jobs" : "All Jobs"}
+        </div>
+        <div className="flex gap-5">
+          <span className="flex flex-col">
+            <b className="font-display text-2xl leading-none">{runningCount}</b>
+            <small className="font-data text-[9px] uppercase tracking-[1px] text-muted mt-1">running</small>
           </span>
-          <div className="flex items-center gap-3 text-[10px] text-zinc-600">
-            <span className="text-indigo-400">{runningCount} running</span>
-            <span className="text-amber-400">{pendingCount} queued</span>
-            <span className="text-green-400">{doneCount} done</span>
-          </div>
+          <span className="flex flex-col">
+            <b className="font-display text-2xl leading-none">{pendingCount}</b>
+            <small className="font-data text-[9px] uppercase tracking-[1px] text-muted mt-1">queued</small>
+          </span>
+          <span className="flex flex-col">
+            <b className="font-display text-2xl leading-none">{doneCount}</b>
+            <small className="font-data text-[9px] uppercase tracking-[1px] text-muted mt-1">done</small>
+          </span>
         </div>
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="divide-y divide-[#2e2722]">
+        <div>
           {sorted.map((job) => {
             const project = projectMap[job.projectId];
             return (
               <button
                 key={job._id}
-                className="w-full text-left px-4 py-3 hover:bg-[#1b1613] transition-colors group"
+                className="w-full text-left px-5 py-3.5 border-b-2 border-ink hover:bg-paper hover:translate-x-[3px] transition-all group"
                 onClick={() => onSelectJob(job._id)}
               >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-sm text-zinc-100 font-medium truncate min-w-0 flex-1">{job.title}</span>
-                  <div className="flex-shrink-0">
-                    <StatusBadge status={job.status} />
-                  </div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <h4 className="text-[13px] uppercase font-bold leading-[1.25] truncate min-w-0 flex-1">{job.title}</h4>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+                <div className="flex items-center gap-2 font-data text-[10px] text-muted">
+                  <StatusBadge status={job.status} />
                   {/* Show project tag only when viewing all projects */}
                   {!projectId && project && (
-                    <span
-                      className="px-1.5 py-0.5 rounded text-zinc-500"
-                      style={{ backgroundColor: project.color ? `${project.color}20` : "#221c18" }}
-                    >
-                      {project.name}
-                    </span>
+                    <span className="border border-ink px-1.5 uppercase">{project.name}</span>
                   )}
                   <span>{formatDistanceToNow(job.createdAt)}</span>
                   {job.status === "running" && job.startedAt && (
-                    <span className="text-indigo-500">
+                    <span className="text-ink font-bold">
                       {Math.round((Date.now() - job.startedAt) / 1000)}s
                     </span>
                   )}
@@ -74,8 +75,10 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
             );
           })}
           {sorted.length === 0 && (
-            <div className="p-8 text-center text-xs text-zinc-700">
-              No jobs yet — create one from the chat panel
+            <div className="m-5 border-[3px] border-ink bg-paper p-4">
+              <p className="font-data text-[11px] leading-[1.5] uppercase">
+                No jobs yet — create one from the New Job tab.
+              </p>
             </div>
           )}
         </div>
