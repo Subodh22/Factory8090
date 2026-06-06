@@ -6,10 +6,19 @@ import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Loader2, Lock, Search, ChevronDown, RefreshCw, FolderDown } from "lucide-react";
+import { X, Loader2, Lock, Search, ChevronDown, RefreshCw, FolderDown, Plus, Globe } from "lucide-react";
 import { toast } from "sonner";
 
 const COLORS = ["#b86a39", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+
+function slugify(s: string) {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+}
 
 type GHRepo = { fullName: string; defaultBranch: string; private: boolean; description: string | null };
 
@@ -17,6 +26,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
   const { data: session } = useSession();
   const create = useMutation(api.projects.create);
 
+  const [mode, setMode] = useState<"existing" | "new">("existing");
   const [form, setForm] = useState({
     name: "",
     repo: "",
@@ -27,6 +37,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
     codemapHint: "",
     color: COLORS[0],
   });
+  const [isPrivate, setIsPrivate] = useState(true);
 
   const [ghRepos, setGhRepos] = useState<GHRepo[]>([]);
   const [filteredRepos, setFilteredRepos] = useState<GHRepo[]>([]);
@@ -36,6 +47,8 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<GHRepo | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const slug = slugify(form.name);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -90,6 +103,62 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (mode === "new") {
+      if (!slug) {
+        toast.error("Enter a project name");
+        return;
+      }
+      if (!session?.accessToken) {
+        toast.error("Sign in with GitHub first");
+        return;
+      }
+
+      setCloning(true);
+      try {
+        // Create GitHub repo + clone locally in one shot.
+        const res = await fetch("/api/projects/create-repo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: slug, description: "", private: isPrivate }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const { codemapHint: _unused, ...projectFields } = form;
+        await create({
+          ...projectFields,
+          repo: data.repo,
+          localPath: data.localPath,
+          defaultBranch: data.defaultBranch,
+          githubToken: session.accessToken,
+        });
+
+        // Seed CLAUDE.md (non-fatal).
+        try {
+          await fetch("/api/projects/claudemd", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              localPath: data.localPath,
+              projectName: form.name,
+              codemapHint: form.codemapHint,
+              agentRules: form.agentRules,
+            }),
+          });
+        } catch { /* ignore */ }
+
+        toast.success("Repo created and cloned — ready to use");
+        onClose();
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to create repo");
+      } finally {
+        setCloning(false);
+      }
+      return;
+    }
+
+    // --- existing repo flow ---
     if (!form.name || !form.repo) {
       toast.error("Name and repo are required");
       return;
@@ -114,9 +183,6 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
             toast.success(`Cloned to ${localPath}`);
           }
         } else {
-          // The server (e.g. the hosted Vercel UI) can't clone onto the local
-          // worker's disk. That's fine — leave localPath empty and the worker
-          // will clone the repo itself the first time it runs a job.
           toast.info("Local worker will clone this repo on first run");
         }
       } catch {
@@ -160,150 +226,225 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <form onSubmit={submit} className="p-4 flex flex-col gap-3">
-          {/* Repo picker */}
-          <div ref={dropdownRef} className="relative">
-            <div className="flex items-center justify-between mb-1">
-              <label className="font-data text-[10px] text-muted uppercase tracking-widest">GitHub Repo</label>
-              {session?.accessToken && (
-                <button
-                  type="button"
-                  onClick={loadRepos}
-                  disabled={loadingRepos}
-                  className="text-[10px] text-zinc-600 hover:text-zinc-400 flex items-center gap-1"
-                >
-                  {loadingRepos ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3 h-3" />
-                  )}
-                  {loadingRepos ? "Loading…" : `${ghRepos.length} repos`}
-                </button>
-              )}
-            </div>
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("existing")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${
+                mode === "existing" ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"
+              }`}
+            >
+              <FolderDown className="w-3 h-3" /> Existing Repo
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("new")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${
+                mode === "new" ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"
+              }`}
+            >
+              <Plus className="w-3 h-3" /> Create New
+            </button>
+          </div>
 
-            {session?.accessToken ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => ghRepos.length && setShowDropdown((v) => !v)}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-paper border-2 border-ink text-sm text-left transition-colors hover:bg-concrete-2"
-                >
-                  {loadingRepos ? (
-                    <span className="flex items-center gap-2 text-zinc-500">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your repos…
-                    </span>
-                  ) : selectedRepo ? (
-                    <span className="flex items-center gap-2 text-zinc-100">
-                      {selectedRepo.private && <Lock className="w-3 h-3 text-zinc-500 shrink-0" />}
-                      {selectedRepo.fullName}
-                    </span>
-                  ) : (
-                    <span className="text-zinc-500">
-                      {ghRepos.length ? "Select a repo…" : "Loading…"}
-                    </span>
-                  )}
-                  <ChevronDown className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
-                </button>
-
-                {showDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-paper border-2 border-ink brutal-shadow-sm z-10 overflow-hidden">
-                    <div className="p-2 border-b-2 border-ink">
-                      <div className="flex items-center gap-2 px-2 py-1 bg-concrete border-2 border-ink">
-                        <Search className="w-3 h-3 text-muted shrink-0" />
-                        <input
-                          autoFocus
-                          value={repoSearch}
-                          onChange={(e) => setRepoSearch(e.target.value)}
-                          placeholder="Filter repos…"
-                          className="flex-1 bg-transparent text-xs text-ink font-mono outline-none placeholder:text-muted"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-52 overflow-y-auto">
-                      {filteredRepos.length === 0 ? (
-                        <p className="text-xs text-muted p-3 text-center font-data uppercase">No repos found</p>
-                      ) : (
-                        filteredRepos.map((r) => (
-                          <button
-                            key={r.fullName}
-                            type="button"
-                            onClick={() => selectRepo(r)}
-                            className="w-full text-left px-3 py-2 border-b border-ink/20 hover:bg-concrete-2 transition-colors"
-                          >
-                            <div className="flex items-center gap-2">
-                              {r.private && <Lock className="w-3 h-3 text-zinc-500 shrink-0" />}
-                              <span className="text-xs text-zinc-100">{r.fullName}</span>
-                              <span className="text-[10px] text-zinc-600 ml-auto">{r.defaultBranch}</span>
-                            </div>
-                            {r.description && (
-                              <p className="text-[10px] text-zinc-600 mt-0.5 truncate pl-5">{r.description}</p>
-                            )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
+          {mode === "new" ? (
+            <>
+              {/* New repo: name */}
+              <div>
+                <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Project Name</label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="My App"
+                  className="bg-paper"
+                />
+                {slug && (
+                  <p className="font-data text-[10px] text-muted uppercase mt-1">
+                    Repo: <span className="text-ink font-bold">{slug}</span>
+                  </p>
                 )}
-              </>
-            ) : (
-              <Input
-                value={form.repo}
-                onChange={(e) => setForm({ ...form, repo: e.target.value })}
-                placeholder="org/repo"
-                className="bg-paper"
-              />
-            )}
-          </div>
+              </div>
 
-          {/* Name */}
-          <div>
-            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Name</label>
-            <Input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="My App"
-              className="bg-paper"
-            />
-          </div>
+              {/* Visibility */}
+              <div>
+                <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Visibility</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivate(true)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${
+                      isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"
+                    }`}
+                  >
+                    <Lock className="w-3 h-3" /> Private
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivate(false)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${
+                      !isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"
+                    }`}
+                  >
+                    <Globe className="w-3 h-3" /> Public
+                  </button>
+                </div>
+              </div>
 
-          {/* Local path */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="font-data text-[10px] text-muted uppercase tracking-widest">
-                Local Path <span className="text-zinc-700 normal-case">(optional)</span>
-              </label>
-              {!form.localPath && selectedRepo && (
-                <span className="text-[10px] text-indigo-500 flex items-center gap-1">
-                  <FolderDown className="w-3 h-3" /> will auto-clone on add
-                </span>
+              {!session?.accessToken && (
+                <p className="font-data text-[11px] uppercase text-ink bg-[#b8860b]/20 border-2 border-ink px-3 py-2">
+                  Sign in with GitHub (top right) to create repos.
+                </p>
               )}
-            </div>
-            <Input
-              value={form.localPath}
-              onChange={(e) => setForm({ ...form, localPath: e.target.value })}
-              placeholder={
-                selectedRepo
-                  ? `Leave empty to auto-clone`
-                  : "C:\\Users\\you\\projects\\my-app"
-              }
-              className="bg-paper"
-            />
-            <p className="text-[10px] text-zinc-600 mt-1">
-              {form.localPath
-                ? "Using this existing local path"
-                : "Empty = repo will be cloned automatically into your workspace"}
-            </p>
-          </div>
+            </>
+          ) : (
+            <>
+              {/* Repo picker */}
+              <div ref={dropdownRef} className="relative">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-data text-[10px] text-muted uppercase tracking-widest">GitHub Repo</label>
+                  {session?.accessToken && (
+                    <button
+                      type="button"
+                      onClick={loadRepos}
+                      disabled={loadingRepos}
+                      className="text-[10px] text-zinc-600 hover:text-zinc-400 flex items-center gap-1"
+                    >
+                      {loadingRepos ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3 h-3" />
+                      )}
+                      {loadingRepos ? "Loading…" : `${ghRepos.length} repos`}
+                    </button>
+                  )}
+                </div>
 
-          {/* Default branch */}
-          <div>
-            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Default Branch</label>
-            <Input
-              value={form.defaultBranch}
-              onChange={(e) => setForm({ ...form, defaultBranch: e.target.value })}
-              className="bg-paper"
-            />
-          </div>
+                {session?.accessToken ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => ghRepos.length && setShowDropdown((v) => !v)}
+                      className="w-full flex items-center justify-between px-3 py-2 bg-paper border-2 border-ink text-sm text-left transition-colors hover:bg-concrete-2"
+                    >
+                      {loadingRepos ? (
+                        <span className="flex items-center gap-2 text-zinc-500">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your repos…
+                        </span>
+                      ) : selectedRepo ? (
+                        <span className="flex items-center gap-2 text-zinc-100">
+                          {selectedRepo.private && <Lock className="w-3 h-3 text-zinc-500 shrink-0" />}
+                          {selectedRepo.fullName}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500">
+                          {ghRepos.length ? "Select a repo…" : "Loading…"}
+                        </span>
+                      )}
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                    </button>
+
+                    {showDropdown && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-paper border-2 border-ink brutal-shadow-sm z-10 overflow-hidden">
+                        <div className="p-2 border-b-2 border-ink">
+                          <div className="flex items-center gap-2 px-2 py-1 bg-concrete border-2 border-ink">
+                            <Search className="w-3 h-3 text-muted shrink-0" />
+                            <input
+                              autoFocus
+                              value={repoSearch}
+                              onChange={(e) => setRepoSearch(e.target.value)}
+                              placeholder="Filter repos…"
+                              className="flex-1 bg-transparent text-xs text-ink font-mono outline-none placeholder:text-muted"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto">
+                          {filteredRepos.length === 0 ? (
+                            <p className="text-xs text-muted p-3 text-center font-data uppercase">No repos found</p>
+                          ) : (
+                            filteredRepos.map((r) => (
+                              <button
+                                key={r.fullName}
+                                type="button"
+                                onClick={() => selectRepo(r)}
+                                className="w-full text-left px-3 py-2 border-b border-ink/20 hover:bg-concrete-2 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {r.private && <Lock className="w-3 h-3 text-zinc-500 shrink-0" />}
+                                  <span className="text-xs text-zinc-100">{r.fullName}</span>
+                                  <span className="text-[10px] text-zinc-600 ml-auto">{r.defaultBranch}</span>
+                                </div>
+                                {r.description && (
+                                  <p className="text-[10px] text-zinc-600 mt-0.5 truncate pl-5">{r.description}</p>
+                                )}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <Input
+                    value={form.repo}
+                    onChange={(e) => setForm({ ...form, repo: e.target.value })}
+                    placeholder="org/repo"
+                    className="bg-paper"
+                  />
+                )}
+              </div>
+
+              {/* Name */}
+              <div>
+                <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Name</label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="My App"
+                  className="bg-paper"
+                />
+              </div>
+
+              {/* Local path */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-data text-[10px] text-muted uppercase tracking-widest">
+                    Local Path <span className="text-zinc-700 normal-case">(optional)</span>
+                  </label>
+                  {!form.localPath && selectedRepo && (
+                    <span className="text-[10px] text-indigo-500 flex items-center gap-1">
+                      <FolderDown className="w-3 h-3" /> will auto-clone on add
+                    </span>
+                  )}
+                </div>
+                <Input
+                  value={form.localPath}
+                  onChange={(e) => setForm({ ...form, localPath: e.target.value })}
+                  placeholder={
+                    selectedRepo
+                      ? `Leave empty to auto-clone`
+                      : "C:\\Users\\you\\projects\\my-app"
+                  }
+                  className="bg-paper"
+                />
+                <p className="text-[10px] text-zinc-600 mt-1">
+                  {form.localPath
+                    ? "Using this existing local path"
+                    : "Empty = repo will be cloned automatically into your workspace"}
+                </p>
+              </div>
+
+              {/* Default branch */}
+              <div>
+                <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Default Branch</label>
+                <Input
+                  value={form.defaultBranch}
+                  onChange={(e) => setForm({ ...form, defaultBranch: e.target.value })}
+                  className="bg-paper"
+                />
+              </div>
+            </>
+          )}
 
           {/* Project structure (used to generate CLAUDE.md) */}
           <div>
@@ -351,11 +492,20 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          <Button type="submit" disabled={cloning} className="mt-1 brutal-press">
+          <Button
+            type="submit"
+            disabled={cloning || (mode === "new" && (!slug || !session?.accessToken))}
+            className="mt-1 brutal-press"
+          >
             {cloning ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Cloning repo…
+                {mode === "new" ? "Creating repo…" : "Cloning repo…"}
+              </span>
+            ) : mode === "new" ? (
+              <span className="flex items-center gap-2">
+                <Plus className="w-3.5 h-3.5" />
+                Create &amp; Add Project
               </span>
             ) : (
               "Add Project"
