@@ -20,6 +20,32 @@ export function broadcast(jobId: string, text: string) {
   }
 }
 
+// A chat message (a full assistant or user turn) sent as a NAMED `chat` SSE
+// event so the browser can render it as a bubble in the chat thread, separate
+// from the raw terminal `data:` stream. Ephemeral — never persisted.
+export function broadcastChat(jobId: string, msg: { role: "assistant" | "user"; text: string; images?: string[] }) {
+  const clients = subscribers.get(jobId);
+  if (!clients?.size) return;
+  const payload = `event: chat\ndata: ${JSON.stringify(msg)}\n\n`;
+  for (const res of [...clients]) {
+    try {
+      res.write(payload);
+    } catch {
+      clients.delete(res);
+    }
+  }
+}
+
+// The worker registers a handler that delivers a user reply to the live (or
+// resumable) Claude session for a job. Returns true if the reply was accepted
+// (a session exists or can be resumed), false otherwise. Kept as a settable
+// hook so sse-server doesn't import queue.ts (which imports this file).
+type ReplyHandler = (jobId: string, text: string, images: string[]) => boolean | Promise<boolean>;
+let replyHandler: ReplyHandler | null = null;
+export function registerReplyHandler(fn: ReplyHandler) {
+  replyHandler = fn;
+}
+
 function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -106,6 +132,43 @@ export function startSseServer(port = 3099): http.Server {
           if (set.size === 0) subscribers.delete(jobId);
         }
       });
+      return;
+    }
+
+    // Deliver a chat reply from the browser straight to the worker's live
+    // Claude session — bypassing Convex entirely so chat is never persisted.
+    // The browser should already be subscribed to /stream/<jobId> to see the
+    // streamed response. Body: { text, images? }.
+    const replyMatch = url.match(/^\/reply\/([^/?]+)/);
+    if (req.method === "POST" && replyMatch) {
+      const jobId = decodeURIComponent(replyMatch[1]);
+      readJsonBody(req)
+        .then(async (body) => {
+          const text = String(body.text ?? "").trim();
+          const images = Array.isArray(body.images) ? (body.images as string[]) : [];
+          if (!text && !images.length) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "text or images required" }));
+            return;
+          }
+          if (!replyHandler) {
+            res.writeHead(503, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "worker not ready" }));
+            return;
+          }
+          const accepted = await replyHandler(jobId, text, images);
+          if (!accepted) {
+            res.writeHead(409, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "no live session for this job" }));
+            return;
+          }
+          res.writeHead(202, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        })
+        .catch((err) => {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        });
       return;
     }
 

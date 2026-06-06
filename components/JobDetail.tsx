@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, GitBranch, Clock, Send, Coins, Paperclip, X, RotateCcw, Plus } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -14,6 +14,9 @@ interface Props {
 }
 
 type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "divider" | "text";
+
+// Ephemeral chat message — lives only in component state, never persisted.
+type ChatMsg = { id: string; role: "assistant" | "user"; text: string; images?: string[] };
 
 function parseLine(raw: string): { type: LineType; text: string } {
   if (raw.startsWith("\x00tool\x00")) return { type: "tool", text: raw.slice(7) };
@@ -43,18 +46,22 @@ const SSE_BASE = process.env.NEXT_PUBLIC_WORKER_SSE_URL ?? "http://localhost:309
 
 export function JobDetail({ jobId, onRedo }: Props) {
   const job = useQuery(api.jobs.get, { id: jobId });
-  const messages = useQuery(api.jobs.listMessages, { jobId });
-  const addMessage = useMutation(api.jobs.addMessage);
   const appendPrompt = useMutation(api.jobs.appendPrompt);
   const redo = useMutation(api.jobs.redo);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [reply, setReply] = useState("");
-  const [sending, setSending] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [promptDraft, setPromptDraft] = useState("");
   const [addingPrompt, setAddingPrompt] = useState(false);
   const [sseOutput, setSseOutput] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Ephemeral chat thread — user replies + assistant bubbles streamed over SSE.
+  // Reset when switching jobs; lost on reload (never persisted, like output).
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+  // Reset the thread when switching jobs.
+  useEffect(() => { setMessages([]); }, [jobId]);
 
   // Redo panel state — re-run a finished job with optional extra prompt/images
   const [redoOpen, setRedoOpen] = useState(false);
@@ -67,12 +74,16 @@ export function JobDetail({ jobId, onRedo }: Props) {
   // stored log to fall back to — finished jobs show no terminal history.
   const convexOutput = "";
 
-  const isWaiting = job?.status === "waiting_for_input";
   const isRunning = job?.status === "running";
+  // Claude asked a question and is paused — reply in the chat panel to continue
+  const isWaiting = job?.status === "waiting_for_input";
   // Backlog job not yet started — user can still edit/grow the prompt
   const isPending = job?.status === "pending" || job?.status === "queued";
   // "Done" jobs that can be re-run from scratch
   const isFinished = job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
+  // Keep the live SSE connection open while running OR waiting, so chat
+  // replies stream back immediately without a Convex round-trip first.
+  const streamActive = isRunning || isWaiting;
 
   // Live clock — ticks every second while running so elapsed time updates
   useEffect(() => {
@@ -86,7 +97,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
   convexOutputRef.current = convexOutput;
 
   useEffect(() => {
-    if (!isRunning) {
+    if (!streamActive) {
       setSseOutput(null);
       return;
     }
@@ -104,6 +115,14 @@ export function JobDetail({ jobId, onRedo }: Props) {
       } catch { /* ignore malformed events */ }
     };
 
+    // Full assistant turns arrive as a named `chat` event → chat thread bubbles
+    es.addEventListener("chat", (e) => {
+      try {
+        const msg = JSON.parse((e as MessageEvent).data) as { role: "assistant" | "user"; text: string; images?: string[] };
+        setMessages((prev) => [...prev, { ...msg, id: `${Date.now()}-${prev.length}` }]);
+      } catch { /* ignore malformed events */ }
+    });
+
     es.onerror = () => {
       setSseOutput(null);
       es.close();
@@ -113,11 +132,12 @@ export function JobDetail({ jobId, onRedo }: Props) {
       es.close();
       setSseOutput(null);
     };
-  }, [jobId, isRunning]);
+  }, [jobId, streamActive]);
 
-  // Use SSE output while running (fast path), Convex output otherwise (source of truth)
-  const output = (isRunning && sseOutput !== null) ? sseOutput : convexOutput;
-  const canChat = job?.status !== "pending";
+  // Use SSE output while live (fast path), Convex output otherwise (source of truth)
+  const output = (streamActive && sseOutput !== null) ? sseOutput : convexOutput;
+  // Chat input is available whenever there is a live agent to talk to.
+  const canChat = isRunning || isWaiting;
 
   // Track when output last changed so we can show silence duration
   const lastOutputAt = useRef(Date.now());
@@ -184,6 +204,34 @@ export function JobDetail({ jobId, onRedo }: Props) {
     }
   }
 
+  async function handleReply(e: React.FormEvent) {
+    e.preventDefault();
+    if ((!reply.trim() && !attachedFiles.length) || sending) return;
+    setSending(true);
+    const text = reply.trim();
+    const images = attachedFiles;
+    // Optimistically show the user's bubble; the assistant's reply streams back
+    // over SSE. Nothing is persisted — POST goes straight to the worker.
+    setMessages((prev) => [...prev, { id: `${Date.now()}-u`, role: "user", text, images: images.length ? images : undefined }]);
+    setReply("");
+    setAttachedFiles([]);
+    try {
+      const res = await fetch(`${SSE_BASE}/reply/${encodeURIComponent(jobId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, images }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: "failed to deliver" }));
+        toast.error(error ?? "Could not reach the worker");
+      }
+    } catch {
+      toast.error("Could not reach the worker — is it running?");
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function handleAddPrompt(e: React.FormEvent) {
     e.preventDefault();
     if ((!promptDraft.trim() && !attachedFiles.length) || addingPrompt) return;
@@ -199,19 +247,6 @@ export function JobDetail({ jobId, onRedo }: Props) {
       toast.success("Added to prompt");
     } finally {
       setAddingPrompt(false);
-    }
-  }
-
-  async function handleReply(e: React.FormEvent) {
-    e.preventDefault();
-    if ((!reply.trim() && !attachedFiles.length) || sending) return;
-    setSending(true);
-    try {
-      await addMessage({ jobId, role: "user", text: reply.trim(), images: attachedFiles.length ? attachedFiles : undefined });
-      setReply("");
-      setAttachedFiles([]);
-    } finally {
-      setSending(false);
     }
   }
 
@@ -397,8 +432,8 @@ export function JobDetail({ jobId, onRedo }: Props) {
         </div>
       </div>
 
-      {/* Chat thread */}
-      {messages && messages.length > 0 && (
+      {/* Chat thread — ephemeral (lives in component state, not Convex) */}
+      {messages.length > 0 && (
         <div className="border-t-4 border-ink flex-shrink-0 max-h-64 overflow-y-auto bg-concrete">
           <div className="px-4 py-2 border-b-2 border-ink">
             <span className="font-data text-[10px] text-muted tracking-widest uppercase">
@@ -407,7 +442,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
           </div>
           <div className="p-4 space-y-3">
             {messages.map((msg) => (
-              <div key={msg._id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+              <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                 <div className="font-data text-[10px] font-bold uppercase mt-0.5 flex-shrink-0 text-ink">
                   {msg.role === "assistant" ? "Claude" : "You"}
                 </div>
@@ -477,12 +512,10 @@ export function JobDetail({ jobId, onRedo }: Props) {
         </div>
       )}
 
-      {/* Chat input */}
+      {/* Chat input — talk to the live agent (running or waiting for a reply) */}
       {canChat && (
         <div className={`border-t-4 p-3 flex-shrink-0 ${
-          isWaiting
-            ? "border-ink bg-[#b8860b]/15"
-            : "border-ink bg-concrete"
+          isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"
         }`}>
           {isWaiting && (
             <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">
@@ -494,7 +527,6 @@ export function JobDetail({ jobId, onRedo }: Props) {
               Message will be delivered when Claude finishes this turn
             </p>
           )}
-          {/* Attachment previews */}
           {attachedFiles.length > 0 && (
             <div className="flex gap-2 mb-2 flex-wrap">
               {attachedFiles.map((src, i) => (
@@ -520,7 +552,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <input
               value={reply}
               onChange={(e) => setReply(e.target.value)}
-              placeholder={isWaiting ? "Reply to Claude..." : isRunning ? "Queue a message..." : "Message Claude..."}
+              placeholder={isWaiting ? "Reply to Claude..." : "Queue a message..."}
               className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
               autoFocus={isWaiting}
             />

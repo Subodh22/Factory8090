@@ -27,6 +27,8 @@ export default defineSchema({
       v.literal("cancelled"),
       v.literal("waiting_for_input")
     ),
+    // Legacy field from the old Convex-backed chat — chat is now ephemeral and
+    // never writes this, but old job docs may still carry it, so keep it optional.
     lastUserMessageAt: v.optional(v.number()),
     sessionId: v.optional(v.string()),
     priority: v.number(),          // lower = higher priority
@@ -51,11 +53,14 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_project_status", ["projectId", "status"]),
 
+  // Vestigial: chat is now ephemeral (streamed over SSE, never persisted). This
+  // table is kept only so any rows written by the old Convex-backed chat still
+  // validate. Nothing writes to it anymore.
   jobMessages: defineTable({
     jobId: v.id("jobs"),
     role: v.union(v.literal("assistant"), v.literal("user")),
     text: v.string(),
-    images: v.optional(v.array(v.string())),  // base64 data URLs attached by user
+    images: v.optional(v.array(v.string())),
     ts: v.number(),
   }).index("by_job", ["jobId"]),
 
