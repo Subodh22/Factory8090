@@ -29,6 +29,29 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Health Check & Status
+
+### `GET /api/health`
+
+Returns a JSON health report with individual subsystem checks.
+
+**Response (200 — healthy / 503 — degraded):**
+
+```json
+{
+  "status": "healthy",
+  "checks": {
+    "convex": "ok"
+  }
+}
+```
+
+Each value in `checks` is either `"ok"` or `"error"`. The top-level `status` is `"healthy"` when all checks pass, `"degraded"` otherwise.
+
+### `/status` page
+
+A browser-friendly status page at [http://localhost:3001/status](http://localhost:3001/status) that calls `/api/health` on load and displays the results. No authentication required.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
