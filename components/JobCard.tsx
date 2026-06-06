@@ -76,13 +76,13 @@ export function JobCard({ job, onSelect }: { job: Job; onSelect?: (id: Id<"jobs"
         onClick={() => onSelect?.(job._id)}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
-          <h5 className="text-[13px] font-bold uppercase text-ink leading-[1.25] line-clamp-2 flex-1">
+          <h5 className="text-[13px] font-bold uppercase text-ink leading-[1.25] flex-1">
             {job.title}
           </h5>
           <StatusBadge status={job.status} />
         </div>
 
-        <p className="font-data text-[11px] text-muted line-clamp-2 mb-3 leading-[1.45]">{job.prompt}</p>
+        <p className="font-data text-[11px] text-muted mb-3 leading-[1.45]">{job.prompt}</p>
 
         {job.images.length > 0 && (
           <div className="flex gap-1 mb-3 flex-wrap">
