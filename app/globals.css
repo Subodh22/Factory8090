@@ -56,7 +56,10 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-border: var(--border);
-  --color-muted: var(--muted-bg);
+  /* `muted` is used app-wide as a *text* colour (text-muted), so it must be the
+     readable muted ink, not the near-invisible muted surface. Use `bg-concrete-2`
+     for the muted background where one is needed. */
+  --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-primary: var(--primary);
   --color-secondary: var(--secondary);
