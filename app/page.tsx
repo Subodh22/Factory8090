@@ -16,7 +16,7 @@ import { EnvPanel } from "@/components/EnvPanel";
 import { JobNotifications } from "@/components/JobNotifications";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Factory, LogOut, LayoutGrid, Menu, X } from "lucide-react";
+import { Plus, LogOut, Menu, X } from "lucide-react";
 
 function fmtTokens(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -25,16 +25,15 @@ function fmtTokens(n: number) {
 }
 
 /**
- * Header pill driven by REAL Claude subscription usage (the same data as
- * Claude Code's `/usage`). Session % comes from Anthropic, not an estimate.
- * Token count is the real total from today's jobs.
+ * Token meter, brutalist edition — a hard-bordered slab. Session % comes from
+ * the real Claude subscription usage (same data as Claude Code's `/usage`);
+ * the token count is today's real total.
  */
 function UsagePill({ inputTokens, outputTokens, jobCount }: { inputTokens: number; outputTokens: number; jobCount: number }) {
   const { data } = useClaudeUsage();
   const total = inputTokens + outputTokens;
   const session = data?.session ?? null;
   const pct = session ? Math.min(Math.round(session.utilization), 100) : null;
-  const color = pct === null ? "bg-zinc-600" : pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-blue-500";
 
   const title = session
     ? `Session: ${pct}% used · ${resetLabel(session.resets_at)}\nToday: ${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in · ${outputTokens.toLocaleString()} out) across ${jobCount} job${jobCount !== 1 ? "s" : ""}`
@@ -42,20 +41,19 @@ function UsagePill({ inputTokens, outputTokens, jobCount }: { inputTokens: numbe
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-full border border-zinc-800 cursor-default"
+      className="font-data text-[11px] border-2 border-ink bg-concrete px-2.5 py-1 cursor-default flex items-center gap-2 uppercase"
       title={title}
     >
-      <div className="flex flex-col gap-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] text-zinc-300 leading-none font-medium">{fmtTokens(total)} tokens</span>
-          <span className="text-[10px] text-zinc-500 leading-none">
-            {pct === null ? "—" : `${pct}% session`}
+      <span className="leading-none">{fmtTokens(total)} tokens</span>
+      {pct !== null && (
+        <>
+          <span className="w-px h-3 bg-ink" />
+          <span className="leading-none">{pct}%</span>
+          <span className="w-16 h-2 bg-paper border border-ink overflow-hidden">
+            <span className="block h-full bg-ink transition-all duration-700" style={{ width: `${pct}%` }} />
           </span>
-        </div>
-        <div className="w-24 h-1 bg-zinc-800 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct ?? 0}%` }} />
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -83,38 +81,42 @@ export default function Home() {
   ) ?? [];
   const runningCount = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
 
+  const TAB_LABELS: Record<string, string> = {
+    board: "Kanban Board",
+    agents: "Agents",
+    chat: "New Job",
+    create: "Create Project",
+    env: "Env",
+    terminal: "Terminal",
+  };
+
   return (
-    <div className="h-screen flex flex-col bg-[#14100e] text-zinc-100 overflow-hidden">
+    <div className="h-screen flex flex-col bg-transparent text-ink overflow-hidden">
       <JobNotifications />
-      {/* Top Bar */}
-      <header className="flex items-center gap-2 px-3 sm:px-4 h-12 border-b border-[#2e2722] flex-shrink-0">
+      {/* ───────── TOP BAR ───────── */}
+      <header className="flex items-center gap-4 px-3 sm:px-[22px] h-[62px] border-b-4 border-ink bg-concrete flex-shrink-0">
         {/* Mobile: open the jobs feed drawer */}
         <button
           onClick={() => setFeedOpen(true)}
-          className="lg:hidden flex-shrink-0 text-zinc-400 hover:text-zinc-100 transition-colors"
+          className="lg:hidden flex-shrink-0 text-ink hover:opacity-60 transition-opacity"
           title="Show jobs"
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-2 mr-2 flex-shrink-0">
-            <Factory className="w-4 h-4 text-indigo-400" />
-            <span className="text-sm font-semibold tracking-tight">Factory</span>
-          </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="w-[18px] h-[18px] bg-ink inline-block" />
+          <span className="font-display uppercase text-[17px] tracking-tight leading-none">Factory</span>
+        </div>
 
-          <div className="w-px h-4 bg-zinc-800 mr-1 flex-shrink-0" />
-
+        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-x-auto no-scrollbar">
           {/* All projects button */}
           <button
             onClick={() => setActiveProject(null)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors flex-shrink-0 whitespace-nowrap ${
-              activeProject === null
-                ? "bg-[#221c18] text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
+            className={`font-data text-[11px] px-2.5 py-1 border-2 border-ink uppercase flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+              activeProject === null ? "bg-ink text-concrete" : "bg-concrete hover:bg-concrete-2"
             }`}
           >
-            <LayoutGrid className="w-3 h-3" />
             All
           </button>
 
@@ -123,15 +125,13 @@ export default function Home() {
             <button
               key={p._id}
               onClick={() => setActiveProject(p._id)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors flex-shrink-0 whitespace-nowrap ${
-                p._id === activeProject
-                  ? "bg-[#221c18] text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-300"
+              className={`font-data text-[11px] px-2.5 py-1 border-2 border-ink uppercase flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+                p._id === activeProject ? "bg-ink text-concrete" : "bg-concrete hover:bg-concrete-2"
               }`}
             >
               <span
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: p.color ?? "#b86a39" }}
+                className="w-[7px] h-[7px] flex-shrink-0"
+                style={{ backgroundColor: p.color ?? "#d6210f" }}
               />
               {p.name}
             </button>
@@ -139,7 +139,7 @@ export default function Home() {
 
           <button
             onClick={() => setShowAddProject(true)}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-zinc-600 hover:text-zinc-300 transition-colors flex-shrink-0 whitespace-nowrap"
+            className="font-data text-[11px] px-2.5 py-1 border-2 border-ink uppercase flex items-center gap-1 flex-shrink-0 whitespace-nowrap bg-concrete hover:bg-ink hover:text-concrete transition-colors"
           >
             <Plus className="w-3 h-3" />
             Add repo
@@ -150,9 +150,9 @@ export default function Home() {
           {runningCount > 0 && (
             <button
               onClick={() => setTab("agents")}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] bg-zinc-900 text-indigo-400 rounded-full border border-indigo-900 hover:border-indigo-700 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 font-data text-[11px] bg-ink text-concrete uppercase"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+              <span className="w-1.5 h-1.5 bg-concrete animate-pulse" />
               {runningCount} running
             </button>
           )}
@@ -165,29 +165,29 @@ export default function Home() {
             />
           </div>
 
-          <span className="hidden lg:inline text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 rounded-full">
-            Claude Code · local
+          <span className="hidden lg:inline font-data text-[11px] bg-ink text-concrete px-2.5 py-1 uppercase">
+            Claude Code · Local
           </span>
 
           {session ? (
             <div className="flex items-center gap-2">
               {session.user?.image && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={session.user.image} alt={session.user.name ?? ""} className="w-6 h-6 rounded-full" />
+                <img src={session.user.image} alt={session.user.name ?? ""} className="w-[30px] h-[30px] border-2 border-ink" />
               )}
-              <span className="hidden sm:inline text-xs text-zinc-400">{session.user?.name}</span>
+              <span className="hidden sm:inline font-data text-[11px] uppercase">{session.user?.name}</span>
               <button
                 onClick={() => signOut()}
-                className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                className="text-ink hover:opacity-60 transition-opacity"
                 title="Sign out"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="w-4 h-4" />
               </button>
             </div>
           ) : (
             <button
               onClick={() => signIn("github")}
-              className="flex items-center gap-1.5 px-3 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-md transition-colors"
+              className="font-data text-[11px] px-3 py-1.5 bg-ink text-concrete uppercase brutal-press border-2 border-ink"
             >
               Sign in with GitHub
             </button>
@@ -195,14 +195,14 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Body */}
+      {/* ───────── BODY ───────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Feed — static column on desktop, slide-in drawer on mobile */}
-        <div className="hidden lg:flex w-64 flex-shrink-0 border-r border-[#2e2722] flex-col overflow-hidden">
+        <div className="hidden lg:flex w-[262px] flex-shrink-0 border-r-4 border-ink flex-col overflow-hidden bg-concrete">
           <div className="flex-1 overflow-hidden">
             <MasterFeed projectId={projectId} onSelectJob={setSelectedJob} />
           </div>
-          <div className="flex-shrink-0 border-t border-[#2e2722] p-3">
+          <div className="flex-shrink-0 border-t-4 border-ink p-3">
             <UsagePanel />
           </div>
         </div>
@@ -211,14 +211,14 @@ export default function Home() {
         {feedOpen && (
           <div className="lg:hidden fixed inset-0 z-40 flex">
             <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              className="absolute inset-0 bg-ink/40"
               onClick={() => setFeedOpen(false)}
             />
-            <div className="relative w-72 max-w-[82vw] bg-[#14100e] border-r border-[#2e2722] flex flex-col">
-              <div className="flex items-center justify-end px-2 h-10 border-b border-[#2e2722] flex-shrink-0">
+            <div className="relative w-72 max-w-[82vw] bg-concrete border-r-4 border-ink flex flex-col">
+              <div className="flex items-center justify-end px-2 h-10 border-b-4 border-ink flex-shrink-0">
                 <button
                   onClick={() => setFeedOpen(false)}
-                  className="text-zinc-500 hover:text-zinc-200 p-1"
+                  className="text-ink hover:opacity-60 p-1"
                   title="Close"
                 >
                   <X className="w-4 h-4" />
@@ -230,7 +230,7 @@ export default function Home() {
                   onSelectJob={(id) => { setSelectedJob(id); setFeedOpen(false); }}
                 />
               </div>
-              <div className="flex-shrink-0 border-t border-[#2e2722] p-3">
+              <div className="flex-shrink-0 border-t-4 border-ink p-3">
                 <UsagePanel />
               </div>
             </div>
@@ -238,34 +238,33 @@ export default function Home() {
         )}
 
         {/* Center */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-3 sm:px-4 pt-3 border-b border-[#2e2722] flex-shrink-0">
+        <div className="flex-1 flex flex-col overflow-hidden bg-transparent">
+          <div className="border-b-4 border-ink flex-shrink-0 bg-concrete sticky top-0 z-[5]">
             <Tabs value={tab} onValueChange={setTab}>
-              <TabsList className="bg-transparent p-0 h-auto gap-4">
+              <TabsList className="bg-transparent p-0 h-auto gap-0 rounded-none w-full justify-start overflow-x-auto no-scrollbar">
                 {["board", "agents", "chat", "create", "env", "terminal"].map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
-                    className="text-xs pb-2.5 px-0 rounded-none border-b-2 data-[state=active]:border-indigo-500 data-[state=active]:text-zinc-100 data-[state=inactive]:border-transparent data-[state=inactive]:text-zinc-500 bg-transparent capitalize"
+                    className="font-sans font-bold uppercase text-[13px] tracking-[.3px] px-[22px] py-4 rounded-none border-r-2 border-ink data-[state=active]:bg-ink data-[state=active]:text-concrete data-[state=inactive]:bg-concrete data-[state=inactive]:text-ink hover:data-[state=inactive]:bg-concrete-2 transition-colors flex-shrink-0"
                   >
-                    {t === "board" ? "Kanban Board" :
-                     t === "agents" ? (
-                       <span className="flex items-center gap-1.5">
-                         Agents
-                         {runningCount > 0 && (
-                           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                         )}
-                       </span>
-                     ) : t === "chat" ? "New Job" :
-                     t === "create" ? "Create Project" :
-                     t === "terminal" ? "Terminal" : "Env"}
+                    {t === "agents" ? (
+                      <span className="flex items-center gap-1.5">
+                        Agents
+                        {runningCount > 0 && (
+                          <span className="w-1.5 h-1.5 bg-current animate-pulse" />
+                        )}
+                      </span>
+                    ) : (
+                      TAB_LABELS[t]
+                    )}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
           </div>
 
-          <div className="flex-1 overflow-hidden p-3 sm:p-4">
+          <div className="flex-1 overflow-y-auto p-6 sm:p-12">
             {tab === "board" && (
               <KanbanBoard projectId={projectId} onSelectJob={setSelectedJob} />
             )}
@@ -275,7 +274,7 @@ export default function Home() {
             )}
 
             {tab === "chat" && projectId && (
-              <div className="max-w-2xl mx-auto pt-4">
+              <div className="max-w-[760px] mx-auto">
                 <ChatPanel
                   projectId={projectId}
                   onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }}
@@ -295,8 +294,8 @@ export default function Home() {
 
             {tab === "chat" && !projectId && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
-                <p className="text-sm text-zinc-500">Select a project to create a job</p>
-                <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
+                <p className="font-display uppercase text-sm text-ink">Select a project to create a job</p>
+                <p className="font-data text-[11px] uppercase text-muted">Choose a repo from the top bar to get started</p>
               </div>
             )}
 
@@ -306,8 +305,8 @@ export default function Home() {
 
             {tab === "env" && !project && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
-                <p className="text-sm text-zinc-500">Select a project to edit its .env</p>
-                <p className="text-xs text-zinc-700">Choose a repo from the top bar to get started</p>
+                <p className="font-display uppercase text-sm text-ink">Select a project to edit its .env</p>
+                <p className="font-data text-[11px] uppercase text-muted">Choose a repo from the top bar to get started</p>
               </div>
             )}
 
@@ -317,8 +316,8 @@ export default function Home() {
 
             {tab === "terminal" && !project && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
-                <p className="text-sm text-zinc-500">Select a project to open a terminal</p>
-                <p className="text-xs text-zinc-700">The terminal runs commands from the repo&apos;s root directory</p>
+                <p className="font-display uppercase text-sm text-ink">Select a project to open a terminal</p>
+                <p className="font-data text-[11px] uppercase text-muted">The terminal runs commands from the repo&apos;s root directory</p>
               </div>
             )}
           </div>
@@ -326,12 +325,12 @@ export default function Home() {
 
         {/* Right: Job detail — full-screen overlay on mobile, side column on desktop */}
         {selectedJob && tab !== "agents" && tab !== "terminal" && (
-          <div className="fixed inset-0 z-30 bg-[#14100e] lg:static lg:inset-auto lg:z-auto lg:w-96 flex-shrink-0 border-l border-[#2e2722] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2722]">
-              <span className="text-[10px] font-semibold text-zinc-600 tracking-widest uppercase">
+          <div className="fixed inset-0 z-30 bg-concrete lg:static lg:inset-auto lg:z-auto lg:w-96 flex-shrink-0 border-l-4 border-ink flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b-4 border-ink bg-ink text-concrete">
+              <span className="font-display text-[13px] tracking-wide uppercase">
                 Job Detail
               </span>
-              <button onClick={() => setSelectedJob(null)} className="text-zinc-600 hover:text-zinc-300 text-xs">
+              <button onClick={() => setSelectedJob(null)} className="text-concrete hover:opacity-60 text-sm">
                 ✕
               </button>
             </div>
