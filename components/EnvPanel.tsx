@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Save,
   Plus,
@@ -123,14 +122,14 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
   return (
     <div className="h-full flex flex-col max-w-3xl mx-auto w-full">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 pb-3 flex-shrink-0">
+      <div className="flex items-center justify-between gap-2 pb-4 mb-4 border-b-4 border-ink flex-shrink-0">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <code className="text-sm font-semibold text-zinc-100">.env</code>
-            <span className="text-[10px] text-zinc-600 truncate">{projectName}</span>
-            {dirty && <span className="text-[10px] text-amber-400">● unsaved</span>}
+            <code className="font-display uppercase text-lg text-ink">.env</code>
+            <span className="font-data text-[10px] uppercase text-muted truncate">{projectName}</span>
+            {dirty && <span className="font-data text-[10px] uppercase text-[#b8860b]">● unsaved</span>}
           </div>
-          <p className="text-[10px] text-zinc-600 mt-0.5">
+          <p className="font-data text-[10px] uppercase text-muted mt-1">
             {loading
               ? "Loading from disk…"
               : exists
@@ -143,7 +142,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
           <button
             onClick={() => setReveal((v) => !v)}
             title={reveal ? "Hide values" : "Reveal values"}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#2e2722] rounded-md transition-colors"
+            className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border-2 border-ink hover:bg-ink hover:text-concrete transition-colors"
           >
             {reveal ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
             {reveal ? "Hide" : "Reveal"}
@@ -151,7 +150,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
           <button
             onClick={() => setRaw((v) => !v)}
             title={raw ? "Structured editor" : "Raw text editor"}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#2e2722] rounded-md transition-colors"
+            className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border-2 border-ink hover:bg-ink hover:text-concrete transition-colors"
           >
             {raw ? <ListTree className="w-3 h-3" /> : <Braces className="w-3 h-3" />}
             {raw ? "Form" : "Raw"}
@@ -160,26 +159,26 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
             onClick={load}
             disabled={loading}
             title="Reload from disk"
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900 border border-[#2e2722] rounded-md transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border-2 border-ink hover:bg-ink hover:text-concrete transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
             Reload
           </button>
-          <Button
+          <button
             onClick={save}
             disabled={saving || loading || !dirty}
-            className="h-7 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs disabled:opacity-50"
+            className="flex items-center gap-1 px-3 py-1.5 font-data text-[10px] uppercase bg-ink text-concrete border-2 border-ink brutal-press disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            <span className="ml-1">Save</span>
-          </Button>
+            Save
+          </button>
         </div>
       </div>
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-zinc-600 text-xs">
+          <div className="flex items-center justify-center h-32 text-muted font-data text-xs uppercase">
             <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading .env…
           </div>
         ) : raw ? (
@@ -188,10 +187,10 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
             onChange={(e) => setRows(parseEnv(e.target.value))}
             spellCheck={false}
             placeholder={"# KEY=value, one per line\nNEXT_PUBLIC_CONVEX_URL=https://…"}
-            className="w-full h-full min-h-[300px] bg-[#14100e] border border-[#2e2722] rounded-md p-3 font-mono text-xs text-zinc-100 outline-none focus:border-zinc-600 resize-none placeholder:text-zinc-700"
+            className="w-full h-full min-h-[300px] bg-paper border-[3px] border-ink p-3 font-mono text-xs text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] resize-none placeholder:text-muted"
           />
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             {rows.map((r) =>
               r.kind === "pair" ? (
                 <div key={r.id} className="flex items-center gap-1.5 group">
@@ -200,21 +199,21 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
                     onChange={(e) => updatePair(r.id, { key: e.target.value })}
                     placeholder="KEY"
                     spellCheck={false}
-                    className="w-2/5 bg-[#14100e] border border-[#2e2722] rounded-md px-2.5 py-1.5 font-mono text-xs text-indigo-300 outline-none focus:border-zinc-600 placeholder:text-zinc-700"
+                    className="w-2/5 bg-paper border-2 border-ink px-2.5 py-1.5 font-mono text-xs font-bold text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted"
                   />
-                  <span className="text-zinc-600 text-xs">=</span>
+                  <span className="text-ink text-xs font-bold">=</span>
                   <input
                     value={r.value}
                     onChange={(e) => updatePair(r.id, { value: e.target.value })}
                     placeholder="value"
                     spellCheck={false}
                     type={!reveal && looksSecret(r.key) ? "password" : "text"}
-                    className="flex-1 bg-[#14100e] border border-[#2e2722] rounded-md px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-700"
+                    className="flex-1 bg-paper border-2 border-ink px-2.5 py-1.5 font-mono text-xs text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted"
                   />
                   <button
                     onClick={() => removeRow(r.id)}
                     title="Remove"
-                    className="text-zinc-700 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-muted hover:text-[#d6210f] p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -226,12 +225,12 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
                     onChange={(e) => updateRaw(r.id, e.target.value)}
                     placeholder="# comment"
                     spellCheck={false}
-                    className="flex-1 bg-transparent border border-transparent rounded-md px-2.5 py-1 font-mono text-xs text-zinc-600 outline-none focus:border-[#2e2722] focus:bg-[#14100e]"
+                    className="flex-1 bg-transparent border-2 border-transparent px-2.5 py-1 font-mono text-xs text-muted outline-none focus:border-ink focus:bg-paper"
                   />
                   <button
                     onClick={() => removeRow(r.id)}
                     title="Remove"
-                    className="text-zinc-700 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-muted hover:text-[#d6210f] p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -241,7 +240,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
 
             <button
               onClick={addPair}
-              className="flex items-center gap-1.5 mt-1 px-2.5 py-1.5 text-xs text-zinc-500 hover:text-zinc-200 border border-dashed border-[#2e2722] hover:border-zinc-600 rounded-md transition-colors w-fit"
+              className="flex items-center gap-1.5 mt-1 px-2.5 py-1.5 font-data text-[11px] uppercase text-ink border-2 border-dashed border-ink hover:bg-ink hover:text-concrete transition-colors w-fit"
             >
               <Plus className="w-3.5 h-3.5" /> Add variable
             </button>
