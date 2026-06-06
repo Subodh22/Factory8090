@@ -64,9 +64,9 @@ function resetLabel(resets_at: string): string {
 }
 
 function barColor(pct: number): string {
-  if (pct >= 90) return "bg-red-500";
-  if (pct >= 70) return "bg-amber-500";
-  return "bg-indigo-500";
+  if (pct >= 90) return "bg-[#d6210f]";
+  if (pct >= 70) return "bg-[#b8860b]";
+  return "bg-ink";
 }
 
 function UsageBar({ label, window: w }: { label: string; window: Window }) {
@@ -74,17 +74,17 @@ function UsageBar({ label, window: w }: { label: string; window: Window }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between">
-        <span className="text-sm text-zinc-200">{label}</span>
-        <span className="text-xs text-zinc-500">{resetLabel(w.resets_at)}</span>
+        <span className="font-data text-[11px] uppercase text-ink">{label}</span>
+        <span className="font-data text-[10px] uppercase text-muted">{resetLabel(w.resets_at)}</span>
       </div>
       <div className="flex items-center gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+        <div className="h-2 flex-1 overflow-hidden border border-ink bg-paper">
           <div
-            className={`h-full rounded-full transition-all ${barColor(pct)}`}
+            className={`h-full transition-all ${barColor(pct)}`}
             style={{ width: `${Math.max(pct, 1)}%` }}
           />
         </div>
-        <span className="w-12 text-right text-xs tabular-nums text-zinc-400">{pct}% used</span>
+        <span className="w-14 text-right font-data text-[10px] tabular-nums text-muted">{pct}% used</span>
       </div>
     </div>
   );
@@ -94,12 +94,12 @@ export function UsagePanel() {
   const { data, error, loading } = useClaudeUsage();
 
   if (loading) {
-    return <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">Loading usage…</div>;
+    return <div className="border-2 border-ink bg-paper p-4 font-data text-[11px] uppercase text-muted">Loading usage…</div>;
   }
 
   if (error) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">
+      <div className="border-2 border-ink bg-paper p-4 font-data text-[11px] uppercase text-muted">
         {error}
       </div>
     );
@@ -112,10 +112,10 @@ export function UsagePanel() {
     : "Claude";
 
   return (
-    <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+    <div className="space-y-4 border-2 border-ink bg-paper p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-100">Plan usage limits</h3>
-        <span className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+        <h3 className="font-display uppercase text-[12px] text-ink">Plan usage limits</h3>
+        <span className="bg-ink text-concrete px-2 py-0.5 font-data text-[10px] uppercase tracking-wide">
           {plan}
         </span>
       </div>
@@ -123,8 +123,8 @@ export function UsagePanel() {
       {data.session && <UsageBar label="Current session" window={data.session} />}
 
       {(data.weekly || data.weeklyOpus || data.weeklySonnet) && (
-        <div className="space-y-3 border-t border-zinc-800 pt-3">
-          <p className="text-xs font-medium text-zinc-500">Weekly limits</p>
+        <div className="space-y-3 border-t-2 border-ink pt-3">
+          <p className="font-data text-[10px] uppercase text-muted">Weekly limits</p>
           {data.weekly && <UsageBar label="All models" window={data.weekly} />}
           {data.weeklyOpus && <UsageBar label="Opus" window={data.weeklyOpus} />}
           {data.weeklySonnet && <UsageBar label="Sonnet" window={data.weeklySonnet} />}

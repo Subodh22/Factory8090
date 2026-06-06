@@ -121,19 +121,19 @@ export function CreateProject({ onCreated }: Props) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto pt-4">
-      <div className="flex flex-col gap-4 p-5 bg-[#1b1613] border border-[#2e2722] rounded-xl">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-indigo-400" />
-          <h2 className="text-sm font-semibold text-zinc-100">Create a new project</h2>
+    <div className="max-w-[760px] mx-auto">
+      <div className="flex flex-col gap-4 p-6 bg-paper border-4 border-ink brutal-shadow">
+        <div className="flex items-center gap-2 pb-3 border-b-4 border-ink">
+          <Sparkles className="w-4 h-4 text-ink" />
+          <h2 className="font-display uppercase text-[15px] text-ink">Create a new project</h2>
         </div>
-        <p className="text-xs text-zinc-500 -mt-2">
+        <p className="font-data text-[11px] uppercase text-muted -mt-2">
           Describe what you want to build. Factory creates a fresh GitHub repo, adds it here, and an
           agent starts building it right away.
         </p>
 
         {!session?.accessToken && (
-          <p className="text-xs text-amber-400 bg-amber-950/40 border border-amber-900/60 rounded-md px-3 py-2">
+          <p className="font-data text-[11px] uppercase text-ink bg-[#b8860b]/20 border-2 border-ink px-3 py-2">
             Sign in with GitHub (top right) to create repos.
           </p>
         )}
@@ -141,23 +141,22 @@ export function CreateProject({ onCreated }: Props) {
         <form onSubmit={submit} className="flex flex-col gap-4">
           {/* Project name */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Project Name</label>
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Project Name</label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My App"
-              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
             />
             {slug && (
-              <p className="text-[10px] text-zinc-600 mt-1">
-                Repo will be created as <span className="text-zinc-400">{slug}</span>
+              <p className="font-data text-[10px] text-muted uppercase mt-1">
+                Repo will be created as <span className="text-ink font-bold">{slug}</span>
               </p>
             )}
           </div>
 
           {/* Description */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">
               What do you want to build?
             </label>
             <Textarea
@@ -165,21 +164,19 @@ export function CreateProject({ onCreated }: Props) {
               onChange={(e) => setDescription(e.target.value)}
               rows={6}
               placeholder={`e.g. A todo app with a Next.js frontend and a SQLite backend.\nUsers can add, complete, and delete tasks, and filter by status.`}
-              className="bg-[#14100e] border-[#2e2722] text-zinc-100 text-sm resize-none placeholder:text-zinc-700 focus-visible:ring-indigo-700"
+              className="font-mono text-sm resize-none"
             />
           </div>
 
           {/* Visibility */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Visibility</label>
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Visibility</label>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setIsPrivate(true)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border transition-colors ${
-                  isPrivate
-                    ? "bg-indigo-950 border-indigo-700 text-indigo-300"
-                    : "bg-[#14100e] border-[#2e2722] text-zinc-500 hover:text-zinc-300"
+                className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${
+                  isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"
                 }`}
               >
                 <Lock className="w-3 h-3" /> Private
@@ -187,10 +184,8 @@ export function CreateProject({ onCreated }: Props) {
               <button
                 type="button"
                 onClick={() => setIsPrivate(false)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border transition-colors ${
-                  !isPrivate
-                    ? "bg-indigo-950 border-indigo-700 text-indigo-300"
-                    : "bg-[#14100e] border-[#2e2722] text-zinc-500 hover:text-zinc-300"
+                className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${
+                  !isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"
                 }`}
               >
                 <Globe className="w-3 h-3" /> Public
@@ -200,15 +195,15 @@ export function CreateProject({ onCreated }: Props) {
 
           {/* Color */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Color</label>
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Color</label>
             <div className="flex gap-2">
               {COLORS.map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className="w-6 h-6 rounded-full border-2 transition-all"
-                  style={{ backgroundColor: c, borderColor: color === c ? "white" : "transparent" }}
+                  className="w-6 h-6 border-2 border-ink transition-all"
+                  style={{ backgroundColor: c, outline: color === c ? "2px solid var(--ink)" : "none", outlineOffset: "2px" }}
                 />
               ))}
             </div>
@@ -217,7 +212,7 @@ export function CreateProject({ onCreated }: Props) {
           <Button
             type="submit"
             disabled={!canSubmit}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white mt-1"
+            className="mt-1 brutal-press"
           >
             {busy ? (
               <span className="flex items-center gap-2">

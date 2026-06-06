@@ -150,11 +150,11 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#1b1613] border border-[#2e2722] rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-[#2e2722]">
-          <h2 className="text-sm font-semibold text-zinc-100">Add Project</h2>
-          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">
+    <div className="fixed inset-0 bg-ink/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-paper border-4 border-ink brutal-shadow w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b-4 border-ink bg-ink text-concrete">
+          <h2 className="font-display uppercase text-[15px]">Add Project</h2>
+          <button onClick={onClose} className="text-concrete hover:opacity-60">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -163,7 +163,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
           {/* Repo picker */}
           <div ref={dropdownRef} className="relative">
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-zinc-500 uppercase tracking-widest">GitHub Repo</label>
+              <label className="font-data text-[10px] text-muted uppercase tracking-widest">GitHub Repo</label>
               {session?.accessToken && (
                 <button
                   type="button"
@@ -186,7 +186,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => ghRepos.length && setShowDropdown((v) => !v)}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-[#14100e] border border-[#2e2722] rounded-md text-sm text-left transition-colors hover:border-zinc-600"
+                  className="w-full flex items-center justify-between px-3 py-2 bg-paper border-2 border-ink text-sm text-left transition-colors hover:bg-concrete-2"
                 >
                   {loadingRepos ? (
                     <span className="flex items-center gap-2 text-zinc-500">
@@ -206,29 +206,29 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                 </button>
 
                 {showDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#221c18] border border-[#2e2722] rounded-lg shadow-xl z-10 overflow-hidden">
-                    <div className="p-2 border-b border-[#2e2722]">
-                      <div className="flex items-center gap-2 px-2 py-1 bg-[#14100e] rounded-md">
-                        <Search className="w-3 h-3 text-zinc-500 shrink-0" />
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-paper border-2 border-ink brutal-shadow-sm z-10 overflow-hidden">
+                    <div className="p-2 border-b-2 border-ink">
+                      <div className="flex items-center gap-2 px-2 py-1 bg-concrete border-2 border-ink">
+                        <Search className="w-3 h-3 text-muted shrink-0" />
                         <input
                           autoFocus
                           value={repoSearch}
                           onChange={(e) => setRepoSearch(e.target.value)}
                           placeholder="Filter repos…"
-                          className="flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
+                          className="flex-1 bg-transparent text-xs text-ink font-mono outline-none placeholder:text-muted"
                         />
                       </div>
                     </div>
                     <div className="max-h-52 overflow-y-auto">
                       {filteredRepos.length === 0 ? (
-                        <p className="text-xs text-zinc-600 p-3 text-center">No repos found</p>
+                        <p className="text-xs text-muted p-3 text-center font-data uppercase">No repos found</p>
                       ) : (
                         filteredRepos.map((r) => (
                           <button
                             key={r.fullName}
                             type="button"
                             onClick={() => selectRepo(r)}
-                            className="w-full text-left px-3 py-2 hover:bg-[#2e2722] transition-colors"
+                            className="w-full text-left px-3 py-2 border-b border-ink/20 hover:bg-concrete-2 transition-colors"
                           >
                             <div className="flex items-center gap-2">
                               {r.private && <Lock className="w-3 h-3 text-zinc-500 shrink-0" />}
@@ -250,26 +250,26 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                 value={form.repo}
                 onChange={(e) => setForm({ ...form, repo: e.target.value })}
                 placeholder="org/repo"
-                className="bg-[#14100e] border-[#2e2722] text-zinc-100"
+                className="bg-paper"
               />
             )}
           </div>
 
           {/* Name */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Name</label>
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Name</label>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="My App"
-              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
+              className="bg-paper"
             />
           </div>
 
           {/* Local path */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-zinc-500 uppercase tracking-widest">
+              <label className="font-data text-[10px] text-muted uppercase tracking-widest">
                 Local Path <span className="text-zinc-700 normal-case">(optional)</span>
               </label>
               {!form.localPath && selectedRepo && (
@@ -286,7 +286,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                   ? `Leave empty to auto-clone`
                   : "C:\\Users\\you\\projects\\my-app"
               }
-              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
+              className="bg-paper"
             />
             <p className="text-[10px] text-zinc-600 mt-1">
               {form.localPath
@@ -297,18 +297,18 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
 
           {/* Default branch */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Default Branch</label>
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Default Branch</label>
             <Input
               value={form.defaultBranch}
               onChange={(e) => setForm({ ...form, defaultBranch: e.target.value })}
-              className="bg-[#14100e] border-[#2e2722] text-zinc-100"
+              className="bg-paper"
             />
           </div>
 
           {/* Project structure (used to generate CLAUDE.md) */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-zinc-500 uppercase tracking-widest">
+              <label className="font-data text-[10px] text-muted uppercase tracking-widest">
                 Project Structure <span className="text-zinc-700 normal-case">(for CLAUDE.md)</span>
               </label>
             </div>
@@ -317,7 +317,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setForm({ ...form, codemapHint: e.target.value })}
               rows={4}
               placeholder={`Describe where things live, e.g.:\n- src/auth/ — all auth logic\n- src/app/api/ — API routes\n- convex/ — database functions\n- Ignore: node_modules, dist, .next`}
-              className="bg-[#14100e] border-[#2e2722] text-zinc-100 text-xs resize-none placeholder:text-zinc-700"
+              className="bg-paper text-xs resize-none placeholder:text-zinc-700"
             />
             <p className="text-[10px] text-zinc-600 mt-1">
               Written to CLAUDE.md in the repo root — helps Claude find the right files without exploring everything
@@ -326,32 +326,32 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
 
           {/* Agent rules */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Agent Rules</label>
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Agent Rules</label>
             <Textarea
               value={form.agentRules}
               onChange={(e) => setForm({ ...form, agentRules: e.target.value })}
               rows={3}
-              className="bg-[#14100e] border-[#2e2722] text-zinc-100 text-xs resize-none"
+              className="bg-paper text-xs resize-none"
             />
           </div>
 
           {/* Color */}
           <div>
-            <label className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 block">Color</label>
+            <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Color</label>
             <div className="flex gap-2">
               {COLORS.map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setForm({ ...form, color: c })}
-                  className="w-6 h-6 rounded-full border-2 transition-all"
-                  style={{ backgroundColor: c, borderColor: form.color === c ? "white" : "transparent" }}
+                  className="w-6 h-6 border-2 border-ink transition-all"
+                  style={{ backgroundColor: c, outline: form.color === c ? "2px solid var(--ink)" : "none", outlineOffset: "2px" }}
                 />
               ))}
             </div>
           </div>
 
-          <Button type="submit" disabled={cloning} className="bg-indigo-600 hover:bg-indigo-500 text-white mt-1">
+          <Button type="submit" disabled={cloning} className="mt-1 brutal-press">
             {cloning ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
