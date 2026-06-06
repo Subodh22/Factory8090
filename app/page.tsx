@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -70,6 +70,7 @@ export default function Home() {
   // Mobile-only slide-in drawer for the jobs feed (hidden ≥ lg where it's a static column)
   const [feedOpen, setFeedOpen] = useState(false);
 
+  const removeProject = useMutation(api.projects.remove);
   const project = activeProject ? (projects.find((p) => p._id === activeProject) ?? null) : null;
   const projectId = project?._id; // undefined when "All" is selected
 
@@ -122,19 +123,38 @@ export default function Home() {
 
           {/* Per-project buttons */}
           {projects.map((p) => (
-            <button
+            <div
               key={p._id}
-              onClick={() => setActiveProject(p._id)}
               className={`font-data text-[11px] px-2.5 py-1 border-2 border-ink uppercase flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
                 p._id === activeProject ? "bg-ink text-concrete" : "bg-concrete hover:bg-concrete-2"
               }`}
             >
-              <span
-                className="w-[7px] h-[7px] flex-shrink-0"
-                style={{ backgroundColor: p.color ?? "#d6210f" }}
-              />
-              {p.name}
-            </button>
+              <button
+                onClick={() => setActiveProject(p._id)}
+                className="flex items-center gap-1.5"
+              >
+                <span
+                  className="w-[7px] h-[7px] flex-shrink-0"
+                  style={{ backgroundColor: p.color ?? "#d6210f" }}
+                />
+                {p.name}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm(`Remove "${p.name}" from Factory?`)) {
+                    removeProject({ id: p._id });
+                    if (activeProject === p._id) setActiveProject(null);
+                  }
+                }}
+                className={`ml-1 hover:opacity-60 transition-opacity ${
+                  p._id === activeProject ? "text-concrete" : "text-ink"
+                }`}
+                title={`Remove ${p.name}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
           ))}
 
           <button
