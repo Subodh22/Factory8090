@@ -60,6 +60,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
   const [saving, setSaving] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [raw, setRaw] = useState(false);
+  const [pathMissing, setPathMissing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,6 +71,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
       setRows(parseEnv(data.content));
       setOriginal(data.content);
       setExists(data.exists);
+      setPathMissing(!!data.pathMissing);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to load .env");
     } finally {
@@ -132,9 +134,11 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
           <p className="font-data text-[10px] uppercase text-muted mt-1">
             {loading
               ? "Loading from disk…"
-              : exists
-                ? `${pairCount} variable${pairCount !== 1 ? "s" : ""} · synced with ${localPath}\\.env`
-                : "No .env yet — saving will create one in the repo root"}
+              : pathMissing
+                ? `Directory not found: ${localPath}`
+                : exists
+                  ? `${pairCount} variable${pairCount !== 1 ? "s" : ""} · synced with ${localPath}\\.env`
+                  : "No .env yet — saving will create one in the repo root"}
           </p>
         </div>
 
@@ -180,6 +184,16 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
         {loading ? (
           <div className="flex items-center justify-center h-32 text-muted font-data text-xs uppercase">
             <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading .env…
+          </div>
+        ) : pathMissing ? (
+          <div className="flex flex-col items-center justify-center h-32 gap-2 text-center">
+            <p className="font-data text-xs uppercase text-[#d6210f]">
+              Local path does not exist on disk
+            </p>
+            <code className="font-mono text-[11px] text-muted break-all px-4">{localPath}</code>
+            <p className="font-data text-[10px] uppercase text-muted mt-1">
+              Clone the repo or update the project&apos;s local path in settings
+            </p>
           </div>
         ) : raw ? (
           <textarea

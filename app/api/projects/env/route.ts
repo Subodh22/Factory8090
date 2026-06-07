@@ -12,7 +12,9 @@ export async function GET(req: NextRequest) {
   const localPath = req.nextUrl.searchParams.get("localPath");
 
   if (!localPath) return NextResponse.json({ error: "localPath required" }, { status: 400 });
-  if (!fs.existsSync(localPath)) return NextResponse.json({ error: "path not found" }, { status: 404 });
+  if (!fs.existsSync(localPath)) {
+    return NextResponse.json({ content: "", exists: false, pathMissing: true, file: ENV_FILE });
+  }
 
   const envPath = path.join(localPath, ENV_FILE);
   const exists = fs.existsSync(envPath);
