@@ -17,6 +17,8 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const [attachments, setAttachments] = useState<string[]>([]);
   const [autoRun, setAutoRun] = useState(true);
   const [delegate, setDelegate] = useState(false);
+  const [model, setModel] = useState("");
+  const [effort, setEffort] = useState("");
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -55,6 +57,8 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         prompt: prompt.trim(),
         images: attachments,
         kind: delegate ? "epic" : undefined,
+        model: model || undefined,
+        effort: (effort as "low" | "medium" | "high" | "max") || undefined,
       });
       toast.success(delegate ? "Epic created" : "Job created");
       // Epics must always be queued so the worker plans & splits them; for plain
@@ -108,6 +112,38 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
               Auto-run {autoRun ? "on" : "off"}
             </button>
           </div>
+        </div>
+
+        {/* model / effort */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b-4 border-ink bg-paper">
+          <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
+            Model
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="font-data text-[11px] uppercase bg-concrete border-2 border-ink px-2 py-1 focus:outline-none cursor-pointer"
+            >
+              <option value="">Default</option>
+              <option value="opus">Opus</option>
+              <option value="sonnet">Sonnet</option>
+              <option value="haiku">Haiku</option>
+            </select>
+          </label>
+
+          <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
+            Effort
+            <select
+              value={effort}
+              onChange={(e) => setEffort(e.target.value)}
+              className="font-data text-[11px] uppercase bg-concrete border-2 border-ink px-2 py-1 focus:outline-none cursor-pointer"
+            >
+              <option value="">Default</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="max">Max</option>
+            </select>
+          </label>
         </div>
 
         {/* body */}

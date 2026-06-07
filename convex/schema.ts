@@ -53,6 +53,8 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
     delegatorPlan: v.optional(v.string()),  // JSON: subtasks from Delegator
+    model: v.optional(v.string()),
+    effort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("max"))),
     inputTokens: v.optional(v.number()),
     outputTokens: v.optional(v.number()),
     costUsd: v.optional(v.number()),

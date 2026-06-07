@@ -1,4 +1,4 @@
-﻿import { createClaudeSession } from "./claude-runner";
+﻿import { createClaudeSession, type ClaudeSessionOptions } from "./claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect, ensureRepoCloned, ensureEpicWorktree, commitOnly, mergeIntoBranch } from "./worktree";
 import { planEpic } from "./delegator";
 
@@ -240,8 +240,16 @@ export async function startJob(jobId: Id<"jobs">) {
       : undefined;
     if (resumeId) log(jobId, `Resuming project session ${resumeId.slice(0, 8)}...`);
 
+    // Model/effort overrides — omitted fields use CLI defaults.
+    const sessionOpts: ClaudeSessionOptions = {
+      ...(job.model ? { model: job.model } : {}),
+      ...(job.effort ? { effort: job.effort } : {}),
+    };
+    if (job.model) log(jobId, `Model: ${job.model}`);
+    if (job.effort) log(jobId, `Effort: ${job.effort}`);
+
     // Create persistent session - process stays alive for the whole job
-    const session = createClaudeSession(worktreePath, resumeId);
+    const session = createClaudeSession(worktreePath, resumeId, sessionOpts);
     activeSessions.set(jobId, session);
 
     session.onSessionId((id) => {
@@ -276,7 +284,7 @@ export async function startJob(jobId: Id<"jobs">) {
       log(jobId, "Stale session, retrying fresh...");
       cleanupSession(jobId);
 
-      const freshSession = createClaudeSession(worktreePath);
+      const freshSession = createClaudeSession(worktreePath, undefined, sessionOpts);
       activeSessions.set(jobId, freshSession);
       freshSession.onSessionId((id) => {
         convex.mutation(api.jobs.updateStatus, { id: jobId, status: "running", sessionId: id }).catch(() => {});
@@ -636,7 +644,11 @@ async function continueJob(jobId: string, text: string, images: string[]): Promi
   ).catch(() => {});
   log(jobId as Id<"jobs">, `Resuming session ${job.sessionId.slice(0, 8)}… to continue the conversation.`);
 
-  const session = createClaudeSession(worktreePath, job.sessionId);
+  const resumeOpts: ClaudeSessionOptions = {
+    ...(job.model ? { model: job.model } : {}),
+    ...(job.effort ? { effort: job.effort as ClaudeSessionOptions["effort"] } : {}),
+  };
+  const session = createClaudeSession(worktreePath, job.sessionId, resumeOpts);
   activeSessions.set(jobId, session);
   session.onSessionId((id) => {
     convex.mutation(api.jobs.updateStatus, { id: jobId as Id<"jobs">, status: "running", sessionId: id }).catch(() => {});

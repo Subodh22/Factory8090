@@ -42,6 +42,8 @@ export const create = mutation({
     githubIssueNumber: v.optional(v.number()),
     // "epic" routes the job to the Delegator (plan → split into child tasks).
     kind: v.optional(v.union(v.literal("epic"), v.literal("task"))),
+    model: v.optional(v.string()),
+    effort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("max"))),
   },
   handler: async (ctx, args) => {
     return ctx.db.insert("jobs", {
@@ -56,6 +58,8 @@ export const create = mutation({
       createdAt: Date.now(),
       githubIssueNumber: args.githubIssueNumber,
       kind: args.kind,
+      model: args.model,
+      effort: args.effort,
     });
   },
 });
@@ -88,6 +92,8 @@ export const redo = mutation({
       blockedBy: [],
       createdAt: Date.now(),
       githubIssueNumber: src.githubIssueNumber,
+      model: src.model,
+      effort: src.effort,
     });
   },
 });

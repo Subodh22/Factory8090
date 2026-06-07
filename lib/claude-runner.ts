@@ -78,7 +78,12 @@ function formatToolUse(name: string, input: Record<string, unknown>): string {
  * Chunks are prefixed with \x00tool\x00 / \x00bash\x00 / \x00stderr\x00
  * so the UI can colour-code them.
  */
-export function createClaudeSession(cwd: string, resumeSessionId?: string): ClaudeSession {
+export interface ClaudeSessionOptions {
+  model?: string;
+  effort?: "low" | "medium" | "high" | "max";
+}
+
+export function createClaudeSession(cwd: string, resumeSessionId?: string, options?: ClaudeSessionOptions): ClaudeSession {
   let currentSessionId: string | null = resumeSessionId ?? null;
   let chunkHandler: ((text: string) => void) | null = null;
   let sessionIdHandler: ((id: string) => void) | null = null;
@@ -100,6 +105,12 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string): Clau
         "--dangerously-skip-permissions",
         "--print",          // non-interactive: reads prompt from stdin
       ];
+      if (options?.model) {
+        args.push("--model", options.model);
+      }
+      if (options?.effort) {
+        args.push("--effort", options.effort);
+      }
       if (currentSessionId) {
         args.push("--resume", currentSessionId);
       }
