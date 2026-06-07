@@ -5,7 +5,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "./AttachmentPreview";
 
@@ -55,6 +55,26 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const [addingPrompt, setAddingPrompt] = useState(false);
   const [sseOutput, setSseOutput] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    const form = new FormData();
+    Array.from(files).forEach((f) => form.append("files", f));
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    const { images, skipped } = await res.json() as { images: string[]; skipped?: string[] };
+    setAttachedFiles((prev) => [...prev, ...images]);
+    if (skipped?.length) toast.error(`Too large to attach: ${skipped.join(", ")}`);
+  }, []);
+
+  function onPaste(e: React.ClipboardEvent) {
+    const files = Array.from(e.clipboardData.files);
+    if (files.length) addFiles(files);
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) addFiles(files);
+  }
 
   // Ephemeral chat thread — user replies + assistant bubbles streamed over SSE.
   // Reset when switching jobs; lost on reload (never persisted, like output).
@@ -317,15 +337,16 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
         {/* Redo panel — re-run with optional extra prompt / images */}
         {isFinished && redoOpen && (
-          <form onSubmit={handleRedo} className="mt-3 p-3 border-2 border-ink bg-paper space-y-2">
+          <form onSubmit={handleRedo} className="mt-3 p-3 border-2 border-ink bg-paper space-y-2" onDrop={(e) => { e.preventDefault(); const files = Array.from(e.dataTransfer.files); if (files.length) { const form = new FormData(); files.forEach((f) => form.append("files", f)); fetch("/api/upload", { method: "POST", body: form }).then((r) => r.json()).then(({ images }: { images: string[] }) => setRedoImages((prev) => [...prev, ...images])); } }} onDragOver={(e) => e.preventDefault()}>
             <p className="font-data text-[10px] uppercase text-muted">
               Re-runs in a fresh worktree. Add extra instructions or images below (optional).
             </p>
             <textarea
               value={redoPrompt}
               onChange={(e) => setRedoPrompt(e.target.value)}
-              placeholder="Anything to change or add this time… (optional)"
+              placeholder="Anything to change or add this time… (paste screenshots, optional)"
               rows={2}
+              onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) { const form = new FormData(); files.forEach((f) => form.append("files", f)); fetch("/api/upload", { method: "POST", body: form }).then((r) => r.json()).then(({ images }: { images: string[] }) => setRedoImages((prev) => [...prev, ...images])); } }}
               className="w-full bg-concrete border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] resize-none"
             />
             {redoImages.length > 0 && (
@@ -478,7 +499,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
       {/* Add-to-prompt — backlog jobs can grow their prompt before they run */}
       {isPending && (
-        <div className="border-t-4 border-ink bg-concrete p-3 flex-shrink-0">
+        <div className="border-t-4 border-ink bg-concrete p-3 flex-shrink-0" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
           <p className="font-data text-[10px] uppercase text-muted mb-2">
             Add instructions or images before this job runs
           </p>
@@ -507,7 +528,8 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <input
               value={promptDraft}
               onChange={(e) => setPromptDraft(e.target.value)}
-              placeholder="Add to prompt..."
+              placeholder="Add to prompt… (paste screenshots here)"
+              onPaste={onPaste}
               className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
             />
             <button
@@ -526,7 +548,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
       {canChat && (
         <div className={`border-t-4 p-3 flex-shrink-0 ${
           isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"
-        }`}>
+        }`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
           {isWaiting && (
             <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">
               Claude has a question — reply to continue
@@ -567,7 +589,8 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <input
               value={reply}
               onChange={(e) => setReply(e.target.value)}
-              placeholder={isWaiting ? "Reply to Claude..." : isRunning ? "Queue a message..." : "Message Claude..."}
+              placeholder={isWaiting ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"}
+              onPaste={onPaste}
               className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
               autoFocus={isWaiting}
             />
