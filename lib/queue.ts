@@ -36,6 +36,19 @@ function buildMessageWithAttachments(text: string, attachments: string[], worktr
   return `${refs.join("\n")}\n\n${text}`;
 }
 
+/** Copy the project's .env into a worktree so agents see the same env vars the
+ *  user manages in the UI. Git worktrees don't include untracked files, so
+ *  without this the worktree has no .env at all. */
+function copyEnvToWorktree(repoPath: string, worktreePath: string) {
+  const src = path.join(repoPath, ".env");
+  if (!fs.existsSync(src)) return;
+  try {
+    fs.copyFileSync(src, path.join(worktreePath, ".env"));
+  } catch {
+    // Non-fatal — the job can still run without it.
+  }
+}
+
 /** Read CLAUDE.md from the worktree root, or null if it doesn't exist. */
 function readClaudeMd(dir: string): string | null {
   const p = path.join(dir, "CLAUDE.md");
@@ -207,6 +220,7 @@ export async function startJob(jobId: Id<"jobs">) {
       const wt = createWorktree(project.localPath, jobId, baseBranch);
       worktreePath = wt.worktreePath;
       branch = wt.branch;
+      copyEnvToWorktree(project.localPath, worktreePath);
       log(jobId, `Worktree ready: ${worktreePath}`);
       log(jobId, `Branch: ${branch}`);
       await withRetry(() =>
@@ -610,6 +624,7 @@ async function continueJob(jobId: string, text: string, images: string[]): Promi
       const wt = createWorktree(project.localPath, jobId, project.defaultBranch);
       worktreePath = wt.worktreePath;
       branch = wt.branch;
+      copyEnvToWorktree(project.localPath, worktreePath);
     }
   } catch (err) {
     log(jobId as Id<"jobs">, `Could not reopen worktree to continue: ${String(err)}`);
