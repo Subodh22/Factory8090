@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Paperclip, Play } from "lucide-react";
+import { Paperclip, Play, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 
@@ -33,6 +33,26 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
     const { images: newAttachments, skipped } = await res.json() as { images: string[]; skipped?: string[] };
     setAttachments((prev) => [...prev, ...newAttachments]);
     if (skipped?.length) toast.error(`Too large to attach: ${skipped.join(", ")}`);
+  }, []);
+
+  const captureScreen = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
+      await new Promise((r) => requestAnimationFrame(r));
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d")!.drawImage(video, 0, 0);
+      track.stop();
+      const dataUrl = canvas.toDataURL("image/png");
+      setAttachments((prev) => [...prev, dataUrl]);
+    } catch {
+      // User cancelled the picker
+    }
   }, []);
 
   function onPaste(e: React.ClipboardEvent) {
@@ -187,6 +207,13 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
               className="hidden"
               onChange={(e) => e.target.files && addFiles(e.target.files)}
             />
+            <button
+              className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b-2 border-ink pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors"
+              onClick={captureScreen}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              Screenshot
+            </button>
           </div>
 
           <button

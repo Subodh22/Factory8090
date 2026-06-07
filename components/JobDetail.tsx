@@ -4,7 +4,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -75,6 +75,27 @@ export function JobDetail({ jobId, onRedo }: Props) {
     const files = Array.from(e.dataTransfer.files);
     if (files.length) addFiles(files);
   }
+
+  const captureScreen = useCallback(async (target: React.Dispatch<React.SetStateAction<string[]>>) => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
+      // Wait a frame so the video has content
+      await new Promise((r) => requestAnimationFrame(r));
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d")!.drawImage(video, 0, 0);
+      track.stop();
+      const dataUrl = canvas.toDataURL("image/png");
+      target((prev) => [...prev, dataUrl]);
+    } catch {
+      // User cancelled the picker — not an error
+    }
+  }, []);
 
   // Ephemeral chat thread — user replies + assistant bubbles streamed over SSE.
   // Reset when switching jobs; lost on reload (never persisted, like output).
@@ -377,6 +398,14 @@ export function JobDetail({ jobId, onRedo }: Props) {
                 <Paperclip className="w-3.5 h-3.5" />
               </button>
               <button
+                type="button"
+                onClick={() => captureScreen(setRedoImages)}
+                className="px-2 py-1.5 bg-concrete border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors"
+                title="Capture screenshot"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+              </button>
+              <button
                 type="submit"
                 disabled={redoing}
                 className="px-3 py-1.5 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"
@@ -525,6 +554,14 @@ export function JobDetail({ jobId, onRedo }: Props) {
             >
               <Paperclip className="w-3.5 h-3.5" />
             </button>
+            <button
+              type="button"
+              onClick={() => captureScreen(setAttachedFiles)}
+              className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0"
+              title="Capture screenshot"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+            </button>
             <input
               value={promptDraft}
               onChange={(e) => setPromptDraft(e.target.value)}
@@ -585,6 +622,14 @@ export function JobDetail({ jobId, onRedo }: Props) {
               title="Attach files"
             >
               <Paperclip className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => captureScreen(setAttachedFiles)}
+              className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0"
+              title="Capture screenshot"
+            >
+              <Monitor className="w-3.5 h-3.5" />
             </button>
             <input
               value={reply}
